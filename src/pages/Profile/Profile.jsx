@@ -14,6 +14,7 @@ import {
 } from "react-icons/md";
 import { getAvatarUrl } from "../../utils/avatarUtils";
 import ProgressDashboard from "../../components/Progress/ProgressDashboard";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const Profile = () => {
   const [userInfo, setUserInfo] = useState(null);
@@ -25,18 +26,15 @@ const Profile = () => {
     const loadUserInfo = async () => {
       try {
         const user = auth.currentUser;
-        
 
         if (user) {
           // Récupérer les informations utilisateur depuis Firebase
           const info = await fetchCompleteUserInfo(user.uid);
-          
 
           // S'assurer que info n'est pas null avant de continuer
           if (info) {
             setUserInfo(info);
           } else {
-            
             setUserInfo({
               firstName: "Utilisateur",
               lastName: "",
@@ -52,11 +50,9 @@ const Profile = () => {
             });
           }
         } else {
-          
           setUserInfo(null);
         }
       } catch (error) {
-        
         // Créer un utilisateur par défaut en cas d'erreur
         if (auth.currentUser) {
           setUserInfo({
@@ -82,7 +78,6 @@ const Profile = () => {
 
     // Ajouter un écouteur d'événement pour les changements d'authentification
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      
       if (user) {
         loadUserInfo();
       } else {
@@ -98,7 +93,7 @@ const Profile = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+        <OptimizedLoadingSpinner size="large" text="Chargement du profil..." />
       </div>
     );
   }
@@ -269,6 +264,7 @@ const Profile = () => {
                       </div>
                     </div>
 
+                    {/* Progression pour les apprenants */}
                     {(userInfo.role === "student" ||
                       userInfo.userType === "apprenant") &&
                       userInfo.roleInfo && (
@@ -292,6 +288,45 @@ const Profile = () => {
                           </div>
                         </div>
                       )}
+
+                    {/* Progression pour les formateurs */}
+                    {(userInfo.role === "instructor" ||
+                      userInfo.userType === "formateur") && (
+                      <div className="flex items-center gap-3">
+                        <MdSchool className="text-secondary text-xl" />
+                        <div>
+                          <p className="text-sm text-gray-500">
+                            Statistiques formateur
+                          </p>
+                          <div className="flex flex-col gap-2 mt-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-gray-600">
+                                Cours créés:
+                              </span>
+                              <span className="text-xs font-semibold bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                {userInfo.courseCount || 0}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-gray-600">
+                                Étudiants inscrits:
+                              </span>
+                              <span className="text-xs font-semibold bg-green-100 text-green-800 px-2 py-1 rounded">
+                                {userInfo.studentCount || 0}
+                              </span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-gray-600">
+                                Évaluations créées:
+                              </span>
+                              <span className="text-xs font-semibold bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                {userInfo.evaluationCount || 0}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-4">

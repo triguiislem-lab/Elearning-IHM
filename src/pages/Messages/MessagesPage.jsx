@@ -24,7 +24,7 @@ import {
   getAvailableRecipients,
   sendMessage,
 } from "../../utils/messageUtils";
-import LoadingSpinner from "../../components/Common/LoadingSpinner";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 import { motion, AnimatePresence } from "framer-motion";
 
 const MessagesPage = () => {
@@ -63,7 +63,6 @@ const MessagesPage = () => {
       setMessages(received);
       setSentMessages(sent);
     } catch (err) {
-      
       setError("Erreur lors de la récupération des messages");
     } finally {
       setLoadingMessages(false);
@@ -84,9 +83,7 @@ const MessagesPage = () => {
           role
         );
         setRecipients(availableRecipients);
-      } catch (err) {
-        
-      }
+      } catch (err) {}
     };
 
     fetchRecipients();
@@ -110,7 +107,6 @@ const MessagesPage = () => {
           );
         }
       } catch (err) {
-        
         setError("Erreur lors de la mise à jour du statut du message");
       }
     },
@@ -145,7 +141,6 @@ const MessagesPage = () => {
         setSuccess("Message supprimé.");
         setTimeout(() => setSuccess(""), 3000);
       } catch (err) {
-        
         setError("Erreur lors de la suppression du message");
       }
     },
@@ -210,7 +205,6 @@ const MessagesPage = () => {
 
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
-      
       setError(`Erreur lors de l'envoi du message: ${err.message}`);
     } finally {
       setSending(false);
@@ -239,7 +233,7 @@ const MessagesPage = () => {
   const isLoading = authLoading || loadingMessages;
 
   if (isLoading) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   if (!user) {

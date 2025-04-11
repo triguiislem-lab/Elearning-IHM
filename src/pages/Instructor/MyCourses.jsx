@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { database } from "../../../firebaseConfig";
@@ -11,16 +11,14 @@ import {
 import {
   MdAdd,
   MdEdit,
-  MdDelete,
   MdPeople,
-  MdDashboard,
   MdSchool,
   MdAssignment,
 } from "react-icons/md";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const MyCourses = () => {
   const [loading, setLoading] = useState(true);
-  const [userInfo, setUserInfo] = useState(null);
   const [courses, setCourses] = useState([]);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -30,6 +28,7 @@ const MyCourses = () => {
     const loadData = async () => {
       try {
         setLoading(true);
+        setError("");
 
         // Vérifier si l'utilisateur est connecté
         if (!auth.currentUser) {
@@ -41,19 +40,23 @@ const MyCourses = () => {
         }
 
         // Récupérer les informations de l'utilisateur
-        const userInfoData = await fetchCompleteUserInfo(auth.currentUser.uid);
-        setUserInfo(userInfoData);
+        const userInfo = await fetchCompleteUserInfo(auth.currentUser.uid);
+        if (!userInfo) {
+          setError("Impossible de récupérer les informations utilisateur");
+          setLoading(false);
+          return;
+        }
 
         // Vérifier si l'utilisateur est un instructeur
         const isInstructor =
-          userInfoData?.role === "instructor" ||
-          userInfoData?.role === "formateur" ||
-          userInfoData?.userType === "formateur";
+          userInfo?.role === "instructor" ||
+          userInfo?.role === "formateur" ||
+          userInfo?.userType === "formateur";
 
         if (
           !isInstructor &&
-          userInfoData?.role !== "admin" &&
-          userInfoData?.userType !== "administrateur"
+          userInfo?.role !== "admin" &&
+          userInfo?.userType !== "administrateur"
         ) {
           setError("Vous n'avez pas les droits pour accéder à cette page");
           setTimeout(() => {
@@ -73,10 +76,19 @@ const MyCourses = () => {
           const coursesData = snapshot.val();
 
           // Récupérer les détails complets de chaque cours et les inscriptions
-          const coursesWithDetails = await Promise.all(
-            Object.keys(coursesData).map(async (courseId) => {
+          const coursesPromises = Object.keys(coursesData).map(
+            async (courseId) => {
               try {
-                const courseDetails = await fetchCourseById(courseId);
+                const courseDetails = await fetchCourseById(
+                  courseId,
+                  true,
+                  true
+                );
+                if (!courseDetails) {
+                  console.warn(`Cours introuvable: ${courseId}`);
+                  return null;
+                }
+
                 const enrollments = await fetchCourseEnrollments(courseId);
 
                 return {
@@ -84,20 +96,31 @@ const MyCourses = () => {
                   students: enrollments.length,
                   enrollments: enrollments,
                 };
-              } catch (error) {
-                
+              } catch (fetchError) {
+                console.error(
+                  `Erreur lors de la récupération du cours ${courseId}:`,
+                  fetchError
+                );
                 return {
                   id: courseId,
                   title: coursesData[courseId].title || "Cours sans titre",
                   students: 0,
                   enrollments: [],
+                  error: true,
                 };
               }
-            })
+            }
+          );
+
+          const coursesWithDetails = await Promise.all(coursesPromises);
+
+          // Filtrer les cours null (non trouvés)
+          const validCourses = coursesWithDetails.filter(
+            (course) => course !== null
           );
 
           // Trier les cours par date de création (du plus récent au plus ancien)
-          const sortedCourses = coursesWithDetails.sort((a, b) => {
+          const sortedCourses = validCourses.sort((a, b) => {
             return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
           });
 
@@ -106,7 +129,7 @@ const MyCourses = () => {
           setCourses([]);
         }
       } catch (error) {
-        
+        console.error("Erreur lors du chargement des cours:", error);
         setError("Erreur lors du chargement des cours");
       } finally {
         setLoading(false);
@@ -129,7 +152,10 @@ const MyCourses = () => {
     return (
       <div className="container py-8">
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+          <OptimizedLoadingSpinner
+            size="large"
+            text="Chargement des cours..."
+          />
         </div>
       </div>
     );
@@ -141,14 +167,7 @@ const MyCourses = () => {
         <h1 className="text-3xl font-bold">Mes cours</h1>
         <div className="flex space-x-2">
           <Link
-            to="/dashboard"
-            className="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center hover:bg-blue-700 transition-colors duration-300"
-          >
-            <MdDashboard className="mr-2" />
-            Tableau de bord
-          </Link>
-          <Link
-            to="/admin/course/new"
+            to="/instructor/course-form"
             className="bg-secondary text-white px-4 py-2 rounded-md flex items-center hover:bg-secondary/90 transition-colors duration-300"
           >
             <MdAdd className="mr-2" />
@@ -199,7 +218,9 @@ const MyCourses = () => {
               <MdPeople className="text-purple-600 text-2xl" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold">Moyenne d'étudiants</h3>
+              <h3 className="text-lg font-semibold">
+                Moyenne d&apos;étudiants
+              </h3>
               <p className="text-3xl font-bold text-purple-600">
                 {averageStudentsPerCourse}
               </p>
@@ -259,15 +280,13 @@ const MyCourses = () => {
                           title="Voir le cours"
                         >
                           <MdSchool className="mr-1" size={16} />
-                          Voir
                         </Link>
                         <Link
-                          to={`/admin/course/edit/${course.id}`}
+                          to={`/instructor/course-form/${course.id}`}
                           className="text-orange-600 hover:text-orange-800 flex items-center"
                           title="Modifier les informations du cours"
                         >
                           <MdEdit className="mr-1" size={16} />
-                          Éditer
                         </Link>
                         <Link
                           to={`/instructor/course-management/${course.id}`}
@@ -275,7 +294,6 @@ const MyCourses = () => {
                           title="Gérer les modules et évaluations"
                         >
                           <MdAssignment className="mr-1" size={16} />
-                          Modules
                         </Link>
                       </div>
                     </td>
@@ -287,10 +305,10 @@ const MyCourses = () => {
         ) : (
           <div className="text-center py-8 bg-gray-50 rounded-lg">
             <p className="text-gray-600 mb-4">
-              Vous n'avez pas encore créé de cours.
+              Vous n&apos;avez pas encore créé de cours.
             </p>
             <Link
-              to="/admin/course/new"
+              to="/instructor/course-form"
               className="bg-secondary text-white px-4 py-2 rounded-md inline-flex items-center hover:bg-secondary/90 transition-colors duration-300"
             >
               <MdAdd className="mr-2" />

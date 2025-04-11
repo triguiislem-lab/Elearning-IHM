@@ -6,9 +6,10 @@ import {
   fetchDisciplinesFromDatabase,
 } from "../../utils/firebaseUtils";
 import { database } from "../../../firebaseConfig";
-import { ref, set } from "firebase/database";
+import { ref, set, update } from "firebase/database";
 import { useAuth } from "../../hooks/useAuth";
 import ModuleManagerCreation from "../../components/CourseModules/ModuleManagerCreation";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 // Fonction pour générer un ID unique
 const generateUniqueId = () => {
@@ -63,7 +64,7 @@ const CourseForm = () => {
         }
 
         // Vérifier si l'utilisateur est un instructeur ou un admin
-        
+
         const isInstructor =
           userRole === "instructor" ||
           userRole === "formateur" ||
@@ -99,12 +100,36 @@ const CourseForm = () => {
         setLoadingData(true);
 
         // Charger les spécialités
+        console.log("Début du chargement des spécialités...");
         const specialitesData = await fetchSpecialitesFromDatabase();
-        setSpecialites(specialitesData);
+        console.log("Spécialités chargées:", specialitesData);
+
+        if (!specialitesData || specialitesData.length === 0) {
+          console.warn("Aucune spécialité trouvée dans la base de données");
+          setError(
+            "Aucune spécialité disponible. Veuillez contacter l'administrateur."
+          );
+        } else {
+          console.log("Nombre de spécialités:", specialitesData.length);
+          console.log("Première spécialité:", specialitesData[0]);
+          setSpecialites(specialitesData);
+        }
 
         // Charger les disciplines
+        console.log("Début du chargement des disciplines...");
         const disciplinesData = await fetchDisciplinesFromDatabase();
-        setDisciplines(disciplinesData);
+        console.log("Disciplines chargées:", disciplinesData);
+
+        if (!disciplinesData || disciplinesData.length === 0) {
+          console.warn("Aucune discipline trouvée dans la base de données");
+          setError(
+            "Aucune discipline disponible. Veuillez contacter l'administrateur."
+          );
+        } else {
+          console.log("Nombre de disciplines:", disciplinesData.length);
+          console.log("Première discipline:", disciplinesData[0]);
+          setDisciplines(disciplinesData);
+        }
 
         // Si on est en mode édition, charger les données du cours
         if (isEditMode) {
@@ -168,7 +193,14 @@ const CourseForm = () => {
               const sortedModules = modulesArray.sort(
                 (a, b) => (a.order || 0) - (b.order || 0)
               );
-              setCourseModules(sortedModules);
+
+              // Filtrer les modules pour éliminer les doublons potentiels
+              const uniqueModules = sortedModules.filter(
+                (module, index, self) =>
+                  index === self.findIndex((m) => m.id === module.id)
+              );
+
+              setCourseModules(uniqueModules);
             }
           } else {
             setError("Cours non trouvé");
@@ -181,7 +213,6 @@ const CourseForm = () => {
           }));
         }
       } catch (error) {
-        
         setError("Erreur lors du chargement des données");
       } finally {
         setLoadingData(false);
@@ -251,129 +282,52 @@ const CourseForm = () => {
 
       const timestamp = new Date().toISOString();
       const courseId = isEditMode ? id : generateUniqueId();
-      
 
       // Préparer les modules
       const modulesData = {};
-      if (courseModules.length > 0) {
-        courseModules.forEach((module, index) => {
-          // Générer un ID pour le module s'il n'en a pas
-          const moduleId = module.id || `m${Date.now()}_${index}`;
-
-          // Préparer les évaluations si présentes
-          const evaluationsData = {};
-          if (
-            module.evaluations &&
-            Object.keys(module.evaluations).length > 0
-          ) {
-            Object.entries(module.evaluations).forEach(
-              ([tempEvalId, evaluation]) => {
-                // Créer un ID permanent pour l'évaluation
-                const evalId = tempEvalId.startsWith("temp_")
-                  ? `e${Date.now()}_${Math.random().toString(36).substring(2)}`
-                  : tempEvalId;
-
-                // S'assurer qu'aucune valeur n'est undefined
-                const cleanEvaluation = {};
-                Object.entries(evaluation).forEach(([key, value]) => {
-                  cleanEvaluation[key] = value === undefined ? null : value;
-                });
-
-                evaluationsData[evalId] = {
-                  ...cleanEvaluation,
-                  id: evalId,
-                  moduleId: moduleId,
-                  date: cleanEvaluation.date || new Date().toISOString(),
-                };
-              }
-            );
-          }
-
-          // Préparer les ressources si présentes
-          let resourcesData = [];
-          if (module.resources && module.resources.length > 0) {
-            resourcesData = module.resources.map((resource) => {
-              // S'assurer qu'aucune valeur n'est undefined
-              const cleanResource = {};
-              Object.entries(resource).forEach(([key, value]) => {
-                cleanResource[key] = value === undefined ? null : value;
-              });
-
-              return {
-                ...cleanResource,
-                id: resource.id,
-                moduleId: moduleId,
-                createdAt: resource.createdAt || new Date().toISOString(),
-              };
-            });
-          }
-
-          // Nettoyer le module de toute valeur undefined
-          const cleanModule = {};
-          Object.entries(module).forEach(([key, value]) => {
-            // Ignorer les propriétés evaluations et resources car on les traite séparément
-            if (key !== "evaluations" && key !== "resources") {
-              cleanModule[key] = value === undefined ? null : value;
-            }
-          });
-
-          // Ajouter le module avec ses évaluations et ressources
-          modulesData[moduleId] = {
-            ...cleanModule,
-            id: moduleId,
-            courseId: courseId,
-            evaluations: evaluationsData,
-            resources: resourcesData,
-            createdAt: cleanModule.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            status: cleanModule.status || "active",
-          };
-        });
-      }
-
-      // Nettoyer les données du cours de toute valeur undefined
-      const cleanCourseData = {};
-      Object.entries(courseData).forEach(([key, value]) => {
-        cleanCourseData[key] = value === undefined ? null : value;
+      courseModules.forEach((module, index) => {
+        const moduleId = module.id || generateUniqueId();
+        modulesData[moduleId] = {
+          ...module,
+          order: index,
+          updatedAt: timestamp,
+        };
+        // Ne pas supprimer l'id du module
+        delete modulesData[moduleId].evaluationsArray;
+        modulesData[moduleId].evaluations = module.evaluations || {};
       });
 
-      const courseToSave = {
-        ...cleanCourseData,
-        id: courseId,
+      // Nettoyer les données du cours
+      const cleanCourseData = {
+        ...courseData,
         updatedAt: timestamp,
-        createdAt: isEditMode
-          ? cleanCourseData.createdAt || timestamp
-          : timestamp,
         modules: modulesData,
       };
 
-      // Sauvegarder le cours dans la base de données
-      
-      const courseRef = ref(database, `elearning/courses/${courseId}`);
-      await set(courseRef, courseToSave);
-      
+      // Supprimer uniquement les champs inutiles
+      delete cleanCourseData.createdAt;
 
-      // Ajouter une référence du cours dans la liste des cours de l'instructeur
+      // Sauvegarder le cours dans la base de données
+      const courseRef = ref(database, `elearning/courses/${courseId}`);
+      await update(courseRef, cleanCourseData);
+
+      // Mettre à jour la référence du cours dans la liste des cours de l'instructeur
       const instructorCoursesRef = ref(
         database,
         `elearning/users/${courseData.instructorId}/courses/${courseId}`
       );
-      await set(instructorCoursesRef, {
-        id: courseId,
+      await update(instructorCoursesRef, {
         title: courseData.title,
-        createdAt: timestamp,
         updatedAt: timestamp,
-        role: "instructor",
       });
 
-      // Ajouter le cours à la liste des cours par spécialité et discipline
+      // Mettre à jour les références par spécialité et discipline
       if (courseData.specialiteId) {
         const specialiteCoursesRef = ref(
           database,
           `elearning/specialites/${courseData.specialiteId}/courses/${courseId}`
         );
-        await set(specialiteCoursesRef, {
-          id: courseId,
+        await update(specialiteCoursesRef, {
           title: courseData.title,
           updatedAt: timestamp,
         });
@@ -384,40 +338,31 @@ const CourseForm = () => {
           database,
           `elearning/disciplines/${courseData.disciplineId}/courses/${courseId}`
         );
-        await set(disciplineCoursesRef, {
-          id: courseId,
+        await update(disciplineCoursesRef, {
           title: courseData.title,
           updatedAt: timestamp,
         });
       }
 
-      setSuccess(
-        isEditMode ? "Cours mis à jour avec succès" : "Cours créé avec succès"
-      );
-
-      // Rediriger vers la page des cours de l'instructeur après un court délai
+      setSuccess(`Cours ${isEditMode ? "mis à jour" : "créé"} avec succès!`);
       setTimeout(() => {
-        const isAdmin = userRole === "admin";
-        if (isAdmin) {
-          navigate(`/admin/courses`);
-        } else {
-          navigate(`/instructor/courses`);
-        }
-      }, 2000);
+        navigate("/instructor/courses");
+      }, 1500);
     } catch (error) {
-      
+      console.error("Erreur lors de la sauvegarde:", error);
       setError(`Erreur: ${error.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading || loadingData) {
+  if (loading) {
     return (
-      <div className="container py-8">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <OptimizedLoadingSpinner
+          size="large"
+          text="Chargement du formulaire..."
+        />
       </div>
     );
   }
@@ -613,9 +558,9 @@ const CourseForm = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-secondary focus:border-secondary"
               >
                 <option value="">-- Sélectionnez une spécialité --</option>
-                {specialites.map((spec) => (
-                  <option key={spec.id} value={spec.id}>
-                    {spec.name}
+                {specialites.map((specialite) => (
+                  <option key={specialite.id} value={specialite.id}>
+                    {specialite.name || specialite.description || "Sans nom"}
                   </option>
                 ))}
               </select>
@@ -637,9 +582,9 @@ const CourseForm = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-secondary focus:border-secondary disabled:bg-gray-100"
               >
                 <option value="">-- Sélectionnez une discipline --</option>
-                {filteredDisciplines.map((disc) => (
-                  <option key={disc.id} value={disc.id}>
-                    {disc.name}
+                {filteredDisciplines.map((discipline) => (
+                  <option key={discipline.id} value={discipline.id}>
+                    {discipline.name || "Sans nom"}
                   </option>
                 ))}
               </select>

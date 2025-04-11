@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { MdArrowBack, MdSave, MdCancel } from "react-icons/md";
 import { getDatabase, ref, update } from "firebase/database";
 import { getAvatarUrl } from "../../utils/avatarUtils";
-import LoadingSpinner from "../../components/Common/LoadingSpinner";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const EditProfile = () => {
   const { user, role, loading: authLoading } = useAuth();
@@ -90,7 +90,6 @@ const EditProfile = () => {
       setSuccess("Profil mis à jour avec succès");
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
-      
       setError("Erreur lors de la mise à jour du profil");
     } finally {
       setSaving(false);
@@ -98,7 +97,7 @@ const EditProfile = () => {
   };
 
   if (authLoading || loadingData) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   if (!user) {

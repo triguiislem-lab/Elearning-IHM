@@ -39,7 +39,19 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
     description: "",
     maxScore: 100,
     // score: 0, // Score likely calculated elsewhere or upon submission
+    questions: [],
   });
+
+  // States for question management
+  const [currentQuestion, setCurrentQuestion] = useState({
+    question: "",
+    options: ["", "", "", ""],
+    correctAnswer: 0,
+    explanation: "",
+  });
+
+  const [showAddQuestion, setShowAddQuestion] = useState(false);
+  const [editingQuestionIndex, setEditingQuestionIndex] = useState(-1);
 
   // --- Permission Check Helper ---
   const canModifyCourse = () => {
@@ -92,6 +104,99 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
     }
   };
 
+  // Fonction pour ajouter une question
+  const handleAddQuestion = (e) => {
+    e.preventDefault();
+
+    // Vérifier que la question est valide
+    if (!currentQuestion.question.trim()) {
+      setError("Veuillez saisir une question");
+      return;
+    }
+
+    // Vérifier que toutes les options sont remplies
+    if (currentQuestion.options.some((option) => !option.trim())) {
+      setError("Veuillez remplir toutes les options de réponse");
+      return;
+    }
+
+    try {
+      // Ajouter ou mettre à jour la question
+      const updatedQuestions = [...evaluationData.questions];
+
+      if (editingQuestionIndex >= 0) {
+        // Mise à jour d'une question existante
+        updatedQuestions[editingQuestionIndex] = {
+          ...currentQuestion,
+          id:
+            updatedQuestions[editingQuestionIndex].id ||
+            `q_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+        };
+      } else {
+        // Ajout d'une nouvelle question
+        updatedQuestions.push({
+          ...currentQuestion,
+          id: `q_${Date.now()}_${Math.random().toString(36).substring(2)}`,
+        });
+      }
+
+      // Mettre à jour l'évaluation avec la nouvelle question
+      setEvaluationData({
+        ...evaluationData,
+        questions: updatedQuestions,
+      });
+
+      // Réinitialiser le formulaire de question
+      setCurrentQuestion({
+        question: "",
+        options: ["", "", "", ""],
+        correctAnswer: 0,
+        explanation: "",
+      });
+
+      setEditingQuestionIndex(-1);
+      setShowAddQuestion(false);
+      setSuccess("Question ajoutée avec succès");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (error) {
+      setError(`Erreur: ${error.message}`);
+    }
+  };
+
+  // Fonction pour éditer une question
+  const handleEditQuestion = (index) => {
+    setCurrentQuestion(evaluationData.questions[index]);
+    setEditingQuestionIndex(index);
+    setShowAddQuestion(true);
+  };
+
+  // Fonction pour supprimer une question
+  const handleDeleteQuestion = (index) => {
+    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette question ?")) {
+      const updatedQuestions = [...evaluationData.questions];
+      updatedQuestions.splice(index, 1);
+
+      setEvaluationData({
+        ...evaluationData,
+        questions: updatedQuestions,
+      });
+
+      setSuccess("Question supprimée avec succès");
+      setTimeout(() => setSuccess(""), 3000);
+    }
+  };
+
+  // Fonction pour modifier une option de réponse
+  const handleOptionChange = (index, value) => {
+    const updatedOptions = [...currentQuestion.options];
+    updatedOptions[index] = value;
+
+    setCurrentQuestion({
+      ...currentQuestion,
+      options: updatedOptions,
+    });
+  };
+
   const handleAddEvaluation = async (e) => {
     e.preventDefault();
     if (!canModifyCourse() || !selectedModule) return; // Permission & module selection check
@@ -101,6 +206,16 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
     setSuccess("");
 
     try {
+      // Vérifier que l'évaluation a au moins une question si c'est un quiz
+      if (
+        evaluationData.type === "quiz" &&
+        evaluationData.questions.length === 0
+      ) {
+        setError("Veuillez ajouter au moins une question à ce quiz");
+        setLoading(false);
+        return;
+      }
+
       // Pass instructorId for potential use in utility
       const evalId = await addEvaluationToModule(
         course.id,
@@ -115,7 +230,9 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
           type: "quiz",
           description: "",
           maxScore: 100,
+          questions: [],
         });
+        setShowAddQuestion(false);
         setShowAddEvaluation(false);
         setSelectedModule(null);
         if (onModulesUpdated) onModulesUpdated();
@@ -162,6 +279,7 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
       type: "quiz",
       description: "",
       maxScore: 100,
+      questions: [], // Initialize with empty questions array
     });
     setError(""); // Clear errors
     setShowAddEvaluation(true);
@@ -415,6 +533,169 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
         )}
       </AnimatePresence>
 
+      {/* Add Question Modal */}
+      <AnimatePresence>
+        {showAddQuestion && (
+          <div
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4"
+            onClick={() => {
+              setShowAddQuestion(false);
+              setEditingQuestionIndex(-1);
+              setCurrentQuestion({
+                question: "",
+                options: ["", "", "", ""],
+                correctAnswer: 0,
+                explanation: "",
+              });
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-lg p-6 w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold">
+                  {editingQuestionIndex >= 0 ? "Modifier" : "Ajouter"} une
+                  question
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddQuestion(false);
+                    setEditingQuestionIndex(-1);
+                    setCurrentQuestion({
+                      question: "",
+                      options: ["", "", "", ""],
+                      correctAnswer: 0,
+                      explanation: "",
+                    });
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <MdClose size={24} />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddQuestion}>
+                <div className="space-y-4">
+                  <div>
+                    <label
+                      htmlFor="question"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Question
+                    </label>
+                    <input
+                      type="text"
+                      id="question"
+                      value={currentQuestion.question}
+                      onChange={(e) =>
+                        setCurrentQuestion({
+                          ...currentQuestion,
+                          question: e.target.value,
+                        })
+                      }
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Options de réponse
+                    </label>
+                    <div className="space-y-2">
+                      {currentQuestion.options.map((option, index) => (
+                        <div key={index} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            id={`option-${index}`}
+                            name="correctAnswer"
+                            checked={currentQuestion.correctAnswer === index}
+                            onChange={() =>
+                              setCurrentQuestion({
+                                ...currentQuestion,
+                                correctAnswer: index,
+                              })
+                            }
+                            className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <input
+                            type="text"
+                            value={option}
+                            onChange={(e) =>
+                              handleOptionChange(index, e.target.value)
+                            }
+                            placeholder={`Option ${index + 1}`}
+                            required
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Sélectionnez le bouton radio à côté de la bonne réponse.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="explanation"
+                      className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                      Explication (optionnelle)
+                    </label>
+                    <textarea
+                      id="explanation"
+                      rows={2}
+                      value={currentQuestion.explanation}
+                      onChange={(e) =>
+                        setCurrentQuestion({
+                          ...currentQuestion,
+                          explanation: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      placeholder="Explication qui sera affichée après que l'étudiant ait répondu"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3 mt-6 border-t pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddQuestion(false);
+                      setEditingQuestionIndex(-1);
+                      setCurrentQuestion({
+                        question: "",
+                        options: ["", "", "", ""],
+                        correctAnswer: 0,
+                        explanation: "",
+                      });
+                    }}
+                    className="bg-gray-300 text-gray-800 px-6 py-3 rounded-md flex items-center gap-2 hover:bg-gray-400 transition-colors duration-300 font-medium"
+                  >
+                    <MdCancel size={20} />
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-secondary text-white px-6 py-3 rounded-md flex items-center gap-2 hover:bg-secondary/90 transition-colors duration-300 font-medium"
+                  >
+                    <MdSave size={20} />
+                    {editingQuestionIndex >= 0 ? "Mettre à jour" : "Ajouter"}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Add Evaluation Modal */}
       <AnimatePresence>
         {showAddEvaluation && selectedModule && (
@@ -528,6 +809,75 @@ const ModuleManager = ({ course, onModulesUpdated, instructorId }) => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     />
                   </div>
+
+                  {/* Questions section (only for quiz type) */}
+                  {evaluationData.type === "quiz" && (
+                    <div className="mt-6 border-t pt-4">
+                      <h4 className="text-lg font-medium mb-3">Questions</h4>
+
+                      {evaluationData.questions &&
+                      evaluationData.questions.length > 0 ? (
+                        <div className="space-y-3 mb-4">
+                          {evaluationData.questions.map((q, index) => (
+                            <div
+                              key={index}
+                              className="border rounded-md p-3 bg-gray-50"
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-medium">{q.question}</p>
+                                  <ul className="mt-1 ml-4 text-sm text-gray-600">
+                                    {q.options.map((option, i) => (
+                                      <li
+                                        key={i}
+                                        className={
+                                          i === q.correctAnswer
+                                            ? "text-green-600 font-medium"
+                                            : ""
+                                        }
+                                      >
+                                        {i === q.correctAnswer ? "✓ " : ""}
+                                        {option}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div className="flex space-x-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleEditQuestion(index)}
+                                    className="p-1 text-blue-600 hover:text-blue-800"
+                                  >
+                                    <MdEdit size={18} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteQuestion(index)}
+                                    className="p-1 text-red-600 hover:text-red-800"
+                                  >
+                                    <MdDelete size={18} />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 italic mb-4">
+                          Aucune question ajoutée
+                        </p>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowAddQuestion(true)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-blue-700 transition-colors duration-300"
+                      >
+                        <MdAdd />
+                        Ajouter une question
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="p-4 bg-gray-50 flex justify-end gap-3">
                   <button

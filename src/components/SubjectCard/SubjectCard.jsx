@@ -3,6 +3,8 @@ import { motion } from "framer-motion";
 import { FaComputer, FaBook } from "react-icons/fa6";
 import { fetchSpecialitesFromDatabase } from "../../utils/firebaseUtils";
 import { Link } from "react-router-dom";
+import { getIcon } from "../../utils/iconUtils";
+import OptimizedLoadingSpinner from "../Common/OptimizedLoadingSpinner";
 
 const SubjectCard = () => {
   const [specialites, setSpecialites] = useState([]);
@@ -12,12 +14,11 @@ const SubjectCard = () => {
     const fetchData = async () => {
       try {
         // Récupérer les spécialités
-        
+
         const specialitesData = await fetchSpecialitesFromDatabase();
-        
+
         setSpecialites(specialitesData);
       } catch (error) {
-        
       } finally {
         setLoading(false);
       }
@@ -53,7 +54,10 @@ const SubjectCard = () => {
 
       {loading ? (
         <div className="flex justify-center items-center h-40">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+          <OptimizedLoadingSpinner
+            size="medium"
+            text="Chargement du sujet..."
+          />
         </div>
       ) : specialites.length === 0 ? (
         <div className="text-center py-10">

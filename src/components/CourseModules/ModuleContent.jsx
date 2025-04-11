@@ -1,420 +1,415 @@
 import React, { useState, useEffect } from "react";
+import { useAuth } from "../../hooks/useAuth";
+import { database } from "../../../firebaseConfig";
+import { ref, set, get } from "firebase/database";
+import ModuleResources from "./ModuleResources";
+import ModuleEvaluation from "../Evaluation/ModuleEvaluation";
 import { motion } from "framer-motion";
 import {
-  MdPlayCircle,
-  MdDescription,
-  MdQuiz,
-  MdAssignment,
-  MdAssessment,
-  MdCheckCircle,
+  MdInfo,
+  MdWarning,
+  MdErrorOutline,
+  MdNotStarted,
 } from "react-icons/md";
-import SimpleModuleResource from "../ModuleResource/SimpleModuleResource";
-import ModuleEvaluation from "../Evaluation/ModuleEvaluation";
-import { getAuth } from "firebase/auth";
-import { getDatabase, ref, get, set } from "firebase/database";
 
-const ModuleContent = ({ module, onComplete, isEnrolled = true }) => {
-  const [activeResourceIndex, setActiveResourceIndex] = useState(0);
-  const [resources, setResources] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("resources"); // "resources" ou "evaluation"
-  const [moduleProgress, setModuleProgress] = useState(null);
+const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
+  const { user } = useAuth();
+  const [currentProgress, setCurrentProgress] = useState(0);
   const [progressUpdating, setProgressUpdating] = useState(false);
+  const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("content");
+  const [evaluationAttempts, setEvaluationAttempts] = useState([]);
+  const [moduleData, setModuleData] = useState(module);
+  const [loading, setLoading] = useState(false);
 
-  const auth = getAuth();
-  const database = getDatabase();
+  // Vérifier si le module est valide
+  const isModuleValid =
+    moduleData && moduleData.id && (moduleData.title || moduleData.titre);
 
-  // Charger les ressources du module
+  // Vérifier si le module a des ressources et des évaluations
+  const hasResources =
+    isModuleValid &&
+    moduleData.resources &&
+    ((Array.isArray(moduleData.resources) && moduleData.resources.length > 0) ||
+      (typeof moduleData.resources === "object" &&
+        Object.keys(moduleData.resources).length > 0));
+
+  const hasEvaluations =
+    isModuleValid &&
+    moduleData.evaluations &&
+    ((Array.isArray(moduleData.evaluations) &&
+      moduleData.evaluations.length > 0) ||
+      (typeof moduleData.evaluations === "object" &&
+        Object.keys(moduleData.evaluations).length > 0));
+
+  // Effet pour tenter de charger le module si celui-ci est incomplet
   useEffect(() => {
-    if (module) {
-      // Convertir les ressources du module en tableau
-      const resourcesArray = module.resources
-        ? Array.isArray(module.resources)
-          ? module.resources
-          : Object.values(module.resources)
-        : [];
+    if ((!module || !module.title) && courseId && module?.id) {
+      fetchModuleData(courseId, module.id);
+    } else {
+      setModuleData(module);
+    }
+  }, [module, courseId]);
 
-      // Si aucune ressource n'est définie, créer des ressources par défaut
-      if (resourcesArray.length === 0) {
-        // Créer des ressources par défaut basées sur le titre du module
-        const defaultResources = [
-          {
-            id: `video_${module.id}`,
-            title: `Vidéo: ${module.title || module.titre || "Introduction"}`,
-            type: "video",
-            url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", // Exemple de vidéo YouTube
-            description: "Vidéo d'introduction au module",
-          },
-          {
-            id: `pdf_${module.id}`,
-            title: `Document: ${
-              module.title || module.titre || "Support de cours"
-            }`,
-            type: "pdf",
-            url: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf", // Exemple de PDF
-            description: "Support de cours au format PDF",
-          },
-        ];
-        setResources(defaultResources);
-      } else {
-        setResources(resourcesArray);
+  useEffect(() => {
+    if (user && isModuleValid) {
+      loadProgress();
+      loadEvaluationAttempts();
+    }
+  }, [user, isModuleValid, moduleData]);
+
+  useEffect(() => {
+    // Si le module n'a pas d'évaluations, définissez l'onglet actif sur "content"
+    if (!hasEvaluations && activeTab === "evaluation") {
+      setActiveTab("content");
+    }
+  }, [hasEvaluations, activeTab]);
+
+  // Nouvelle fonction pour récupérer les données du module directement depuis Firebase
+  const fetchModuleData = async (courseId, moduleId) => {
+    if (!courseId || !moduleId) return;
+
+    setLoading(true);
+    try {
+      // Essayer de récupérer le module depuis le chemin modules du cours
+      const modulePath = `elearning/courses/${courseId}/modules/${moduleId}`;
+      const moduleRef = ref(database, modulePath);
+      const snapshot = await get(moduleRef);
+
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        setModuleData({
+          ...data,
+          id: moduleId,
+          courseId: courseId,
+        });
+        return;
       }
 
+      // Si le module n'est pas trouvé, essayer un chemin alternatif
+      const alternativePath = `elearning/modules/${courseId}/${moduleId}`;
+      const altModuleRef = ref(database, alternativePath);
+      const altSnapshot = await get(altModuleRef);
+
+      if (altSnapshot.exists()) {
+        const data = altSnapshot.val();
+        setModuleData({
+          ...data,
+          id: moduleId,
+          courseId: courseId,
+        });
+        return;
+      }
+
+      // Si toujours pas trouvé, vérifier dans le cours lui-même
+      const coursePath = `elearning/courses/${courseId}`;
+      const courseRef = ref(database, coursePath);
+      const courseSnapshot = await get(courseRef);
+
+      if (courseSnapshot.exists()) {
+        const courseData = courseSnapshot.val();
+        if (courseData.modules) {
+          // Si les modules sont dans un tableau
+          if (Array.isArray(courseData.modules)) {
+            const foundModule = courseData.modules.find(
+              (m) => m.id === moduleId
+            );
+            if (foundModule) {
+              setModuleData({
+                ...foundModule,
+                courseId: courseId,
+              });
+              return;
+            }
+          }
+          // Si les modules sont dans un objet
+          else if (typeof courseData.modules === "object") {
+            if (courseData.modules[moduleId]) {
+              setModuleData({
+                ...courseData.modules[moduleId],
+                id: moduleId,
+                courseId: courseId,
+              });
+              return;
+            }
+          }
+        }
+      }
+
+      // Si aucun module n'est trouvé, définir une erreur
+      setError(`Module non trouvé. Veuillez contacter le formateur.`);
+    } catch (err) {
+      console.error("Erreur lors du chargement du module:", err);
+      setError(
+        "Erreur lors du chargement du module. Veuillez réessayer plus tard."
+      );
+    } finally {
       setLoading(false);
     }
-  }, [module]);
+  };
 
-  // Charger la progression du module
-  useEffect(() => {
-    const fetchModuleProgress = async () => {
-      if (!auth.currentUser || !module || !module.courseId || !isEnrolled)
-        return;
+  const loadProgress = async () => {
+    if (!user || !moduleData || !moduleData.id || !moduleData.courseId) return;
 
-      try {
-        const progressRef = ref(
-          database,
-          `Elearning/Progression/${auth.currentUser.uid}/${module.courseId}/${module.id}`
-        );
-        const snapshot = await get(progressRef);
+    try {
+      const progressRef = ref(
+        database,
+        `elearning/progress/${user.uid}/${moduleData.courseId}/${moduleData.id}`
+      );
+      const snapshot = await get(progressRef);
 
-        if (snapshot.exists()) {
-          setModuleProgress(snapshot.val());
-          
-        } else {
-          // Initialiser la progression si elle n'existe pas
-          const initialProgress = {
-            moduleId: module.id,
-            courseId: module.courseId,
-            userId: auth.currentUser.uid,
-            startDate: new Date().toISOString(),
-            progress: 0,
-            completed: false,
-            lastUpdated: new Date().toISOString(),
-          };
-
-          await set(progressRef, initialProgress);
-          setModuleProgress(initialProgress);
-          
-        }
-      } catch (error) {
-        
+      if (snapshot.exists()) {
+        const progressData = snapshot.val();
+        setCurrentProgress(progressData.progress || 0);
       }
-    };
-
-    fetchModuleProgress();
-  }, [auth.currentUser, module, database, isEnrolled]);
-
-  // Fonction pour obtenir l'icône en fonction du type de ressource
-  const getResourceIcon = (resource) => {
-    if (!resource || !resource.type) return <MdDescription />;
-
-    switch (resource.type.toLowerCase()) {
-      case "video":
-        return <MdPlayCircle className="text-red-600" />;
-      case "pdf":
-        return <MdDescription className="text-blue-600" />;
-      case "quiz":
-        return <MdQuiz className="text-green-600" />;
-      case "assignment":
-        return <MdAssignment className="text-orange-600" />;
-      default:
-        return <MdDescription className="text-gray-600" />;
+    } catch (error) {
+      console.error("Erreur lors du chargement de la progression:", error);
+      setError("Erreur lors du chargement de la progression");
     }
   };
 
-  // Fonction pour gérer la complétion d'une évaluation
-  const handleEvaluationComplete = async (score) => {
-    
+  const loadEvaluationAttempts = async () => {
+    if (!user || !moduleData || !moduleData.id) return;
 
-    // Mettre à jour la progression du module
-    await updateModuleProgress(score);
+    try {
+      const attemptsRef = ref(
+        database,
+        `elearning/evaluations/${moduleData.id}/${user.uid}/attempts`
+      );
+      const snapshot = await get(attemptsRef);
 
-    // Appeler le callback onComplete si fourni
-    if (onComplete) {
-      onComplete(score);
+      if (snapshot.exists()) {
+        const attempts = Object.values(snapshot.val());
+        setEvaluationAttempts(attempts);
+      }
+    } catch (error) {
+      console.error("Error loading evaluation attempts:", error);
     }
   };
 
-  // Fonction pour mettre à jour la progression du module
-  const updateModuleProgress = async (score = null) => {
-    if (!auth.currentUser || !module || !module.courseId || !isEnrolled) return;
+  const updateProgress = async (newProgress, score = null) => {
+    if (
+      !user ||
+      progressUpdating ||
+      !moduleData ||
+      !moduleData.id ||
+      !moduleData.courseId
+    )
+      return;
 
     try {
       setProgressUpdating(true);
+      setError("");
 
-      // Calculer la nouvelle progression
-      const newProgress = moduleProgress
-        ? {
-            ...moduleProgress,
-            progress: 100, // Marquer comme terminé
-            completed: true,
-            lastUpdated: new Date().toISOString(),
-          }
-        : {
-            moduleId: module.id,
-            courseId: module.courseId,
-            userId: auth.currentUser.uid,
-            progress: 100,
-            completed: true,
-            startDate: new Date().toISOString(),
-            lastUpdated: new Date().toISOString(),
-          };
+      const progressData = {
+        moduleId: moduleData.id,
+        courseId: moduleData.courseId,
+        userId: user.uid,
+        progress: newProgress,
+        completed: newProgress === 100,
+        lastUpdated: new Date().toISOString(),
+      };
 
-      // Ajouter le score si fourni
       if (score !== null) {
-        newProgress.score = score;
+        progressData.score = score;
       }
 
-      // Enregistrer la progression dans Firebase
       const progressRef = ref(
         database,
-        `Elearning/Progression/${auth.currentUser.uid}/${module.courseId}/${module.id}`
+        `elearning/progress/${user.uid}/${moduleData.courseId}/${moduleData.id}`
       );
-      await set(progressRef, newProgress);
 
-      // Mettre à jour l'état local
-      setModuleProgress(newProgress);
-      
+      await set(progressRef, progressData);
+      setCurrentProgress(newProgress);
 
-      return newProgress;
+      if (newProgress === 100 && onComplete) {
+        onComplete(score);
+      }
+
+      await checkCourseCompletion();
     } catch (error) {
-      
-      return null;
+      console.error("Erreur lors de la mise à jour de la progression:", error);
+      setError("Erreur lors de la mise à jour de la progression");
     } finally {
       setProgressUpdating(false);
     }
   };
 
+  const checkCourseCompletion = async () => {
+    if (!user || !moduleData || !moduleData.courseId) return;
+
+    try {
+      const progressRef = ref(
+        database,
+        `elearning/progress/${user.uid}/${moduleData.courseId}`
+      );
+      const snapshot = await get(progressRef);
+
+      if (snapshot.exists()) {
+        const modules = Object.values(snapshot.val()).filter(
+          (m) => m && typeof m === "object"
+        );
+
+        if (modules.length === 0) return;
+
+        const allModulesCompleted = modules.every((mod) => mod.completed);
+
+        if (allModulesCompleted) {
+          const validModules = modules.filter(
+            (mod) => typeof mod.score === "number" && !isNaN(mod.score)
+          );
+          const averageScore =
+            validModules.length > 0
+              ? validModules.reduce((sum, mod) => sum + (mod.score || 0), 0) /
+                validModules.length
+              : 0;
+
+          const courseStatusRef = ref(
+            database,
+            `elearning/courses/${moduleData.courseId}/status/${user.uid}`
+          );
+
+          await set(courseStatusRef, {
+            completed: true,
+            score: Math.round(averageScore),
+            completedAt: new Date().toISOString(),
+            passed: averageScore >= 70,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error checking course completion:", error);
+    }
+  };
+
+  const handleResourceComplete = async () => {
+    const newProgress = Math.min(currentProgress + 25, 100);
+    await updateProgress(newProgress);
+  };
+
+  const handleEvaluationComplete = async (score) => {
+    await updateProgress(100, score);
+  };
+
   if (loading) {
     return (
-      <div className="flex justify-center p-8">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+      <div className="flex justify-center items-center p-8">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+        <span className="ml-3 text-gray-600">Chargement du module...</span>
       </div>
     );
   }
 
-  if (!module) {
+  if (!isEnrolled) {
     return (
-      <div className="bg-white p-8 rounded-lg shadow-md text-center">
-        <p className="text-gray-600">Aucun module sélectionné</p>
+      <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded flex items-center gap-2">
+        <MdWarning className="text-yellow-700 text-lg" />
+        <p>Vous devez être inscrit au cours pour accéder à ce contenu.</p>
+      </div>
+    );
+  }
+
+  if (!isModuleValid) {
+    return (
+      <div className="bg-red-50 border border-red-200 text-red-700 p-5 rounded-lg flex flex-col items-center gap-3">
+        <MdErrorOutline className="text-red-500 text-4xl" />
+        <h3 className="text-lg font-medium text-red-800">Module non trouvé</h3>
+        <p className="text-center max-w-md">
+          {error ||
+            `Le module demandé n'existe pas ou n'est plus disponible. Veuillez revenir à la liste des modules du cours.`}
+        </p>
+        <button
+          onClick={() => window.history.back()}
+          className="mt-2 px-4 py-2 bg-secondary text-white rounded-md hover:bg-secondary/90 transition-all"
+        >
+          Retour aux modules
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="p-6">
-        <h2 className="text-2xl font-bold mb-2">
-          {module.title || module.titre || "Module sans titre"}
-        </h2>
-        <p className="text-gray-600 mb-6">
-          {module.description || "Aucune description disponible."}
-        </p>
+    <div className="space-y-6">
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded flex items-center gap-2">
+          <MdWarning className="text-red-700 text-lg" />
+          <p>{error}</p>
+        </div>
+      )}
 
-        {/* Message d'accès restreint si l'utilisateur n'est pas inscrit */}
-        {!isEnrolled && (
-          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-6">
-            <p className="text-gray-700 mb-2 flex items-center">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5 text-yellow-500 mr-2"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Vous devez être inscrit à ce cours pour accéder aux ressources et
-              aux évaluations.
-            </p>
-          </div>
-        )}
-
-        {/* Onglets de navigation - visible pour tous, mais avec restrictions pour les non-inscrits */}
-        {
-          <div className="flex border-b mb-6">
-            <button
-              className={`px-4 py-2 font-medium ${
-                activeTab === "resources"
-                  ? "text-secondary border-b-2 border-secondary"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setActiveTab("resources")}
-            >
-              Ressources
-            </button>
-            <button
-              className={`px-4 py-2 font-medium ${
-                activeTab === "evaluation"
-                  ? "text-secondary border-b-2 border-secondary"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setActiveTab("evaluation")}
-            >
-              Évaluation
-            </button>
-          </div>
-        }
-
-        {/* Contenu des onglets */}
-        {activeTab === "resources" ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {/* Liste des ressources */}
-            <div className="md:col-span-1">
-              <h3 className="text-lg font-semibold mb-4">Ressources</h3>
-              <div className="space-y-2">
-                {resources.length > 0 ? (
-                  resources.map((resource, index) => (
-                    <motion.div
-                      key={resource.id || index}
-                      whileHover={{ scale: 1.02 }}
-                      className={`p-3 rounded-lg cursor-pointer flex items-center gap-3 ${
-                        activeResourceIndex === index
-                          ? "bg-secondary text-white"
-                          : "bg-gray-100 hover:bg-gray-200"
-                      }`}
-                      onClick={() => setActiveResourceIndex(index)}
-                    >
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          activeResourceIndex === index
-                            ? "bg-white text-secondary"
-                            : "bg-white text-gray-600"
-                        }`}
-                      >
-                        {getResourceIcon(resource)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">
-                          {resource.title || `Ressource ${index + 1}`}
-                        </p>
-                        <p className="text-xs truncate">
-                          {resource.type || "Document"}
-                        </p>
-                      </div>
-                    </motion.div>
-                  ))
-                ) : (
-                  <p className="text-gray-500 text-center py-4">
-                    Aucune ressource disponible
-                  </p>
-                )}
-              </div>
+      <div className="bg-white rounded-lg shadow-sm p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">
+            {moduleData.title || moduleData.titre || "Module sans titre"}
+          </h2>
+          <div className="flex items-center space-x-2">
+            <div className="text-sm text-gray-500">
+              Progression: {currentProgress}%
             </div>
-
-            {/* Contenu de la ressource active */}
-            <div className="md:col-span-3">
-              {isEnrolled ? (
-                <SimpleModuleResource
-                  resource={resources[activeResourceIndex] || null}
-                />
-              ) : (
-                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 text-center">
-                  <p className="text-gray-700 mb-4">
-                    Inscrivez-vous au cours pour accéder à cette ressource.
-                  </p>
-                  <div className="blur-sm pointer-events-none">
-                    <SimpleModuleResource
-                      resource={resources[activeResourceIndex] || null}
-                      disabled={true}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : activeTab === "evaluation" ? (
-          <ModuleEvaluation
-            moduleId={module.id}
-            courseId={module.courseId}
-            onComplete={handleEvaluationComplete}
-          />
-        ) : !isEnrolled ? (
-          <div className="bg-gray-50 p-8 rounded-lg text-center">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-16 w-16 text-yellow-500 mx-auto mb-4"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fillRule="evenodd"
-                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                clipRule="evenodd"
+            <div className="w-24 h-2 bg-gray-200 rounded-full">
+              <motion.div
+                className="h-2 bg-blue-500 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${currentProgress}%` }}
+                transition={{ duration: 0.5 }}
               />
-            </svg>
-            <h3 className="text-xl font-semibold mb-2">Accès restreint</h3>
-            <p className="text-gray-600 mb-4">
-              Vous devez être inscrit à ce cours pour accéder aux ressources et
-              aux évaluations.
-            </p>
-            <p className="text-sm text-gray-500">
-              Inscrivez-vous pour débloquer l'accès complet à ce module et à
-              tous les autres modules du cours.
-            </p>
+            </div>
           </div>
-        ) : null}
+        </div>
 
-        {/* Bouton pour marquer le module comme terminé */}
-        {isEnrolled && activeTab === "resources" && onComplete && (
-          <div className="mt-8 text-center">
-            {moduleProgress && moduleProgress.completed ? (
-              <div className="flex flex-col items-center">
-                <div className="flex items-center gap-2 text-green-600 mb-2">
-                  <MdCheckCircle size={24} />
-                  <span className="font-medium">Module terminé</span>
-                </div>
-                <p className="text-sm text-gray-600 mb-4">
-                  {moduleProgress.score
-                    ? `Score: ${moduleProgress.score}%`
-                    : ""}
-                  {moduleProgress.lastUpdated
-                    ? ` - Dernière activité: ${new Date(
-                        moduleProgress.lastUpdated
-                      ).toLocaleDateString()}`
-                    : ""}
+        <div className="border-b mb-4">
+          <nav className="flex space-x-4">
+            <button
+              onClick={() => setActiveTab("content")}
+              className={`py-2 px-4 ${
+                activeTab === "content"
+                  ? "border-b-2 border-blue-500 text-blue-600"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Contenu
+            </button>
+            <button
+              onClick={() => setActiveTab("evaluation")}
+              disabled={!hasEvaluations}
+              className={`py-2 px-4 ${
+                activeTab === "evaluation"
+                  ? "border-b-2 border-blue-500 text-blue-600"
+                  : !hasEvaluations
+                  ? "text-gray-400 cursor-not-allowed"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              Évaluation {!hasEvaluations && "(Aucune)"}
+            </button>
+          </nav>
+        </div>
+
+        {activeTab === "content" ? (
+          hasResources ? (
+            <ModuleResources
+              resources={moduleData.resources}
+              onResourceComplete={handleResourceComplete}
+              moduleId={moduleData.id}
+              courseId={moduleData.courseId}
+            />
+          ) : (
+            <div className="bg-blue-50 p-4 rounded-lg text-blue-800 flex items-center gap-3">
+              <MdInfo className="text-blue-500 text-xl" />
+              <div>
+                <p className="font-medium">Aucune ressource disponible</p>
+                <p className="text-sm">
+                  Le formateur n'a pas encore ajouté de ressources à ce module.
                 </p>
-                <button
-                  onClick={() => updateModuleProgress()}
-                  className="text-secondary border border-secondary px-6 py-2 rounded-md hover:bg-secondary/10 transition-colors duration-300 flex items-center gap-2"
-                  disabled={progressUpdating}
-                >
-                  {progressUpdating ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
-                      <span>Mise à jour...</span>
-                    </>
-                  ) : (
-                    <>
-                      <MdCheckCircle />
-                      <span>Marquer à nouveau</span>
-                    </>
-                  )}
-                </button>
               </div>
-            ) : (
-              <button
-                onClick={() => updateModuleProgress()}
-                className="bg-secondary text-white px-6 py-2 rounded-md hover:bg-secondary/90 transition-colors duration-300 flex items-center gap-2"
-                disabled={progressUpdating}
-              >
-                {progressUpdating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    <span>Mise à jour...</span>
-                  </>
-                ) : (
-                  <>
-                    <MdCheckCircle />
-                    <span>Marquer comme terminé</span>
-                  </>
-                )}
-              </button>
-            )}
-          </div>
+            </div>
+          )
+        ) : (
+          <ModuleEvaluation
+            module={moduleData}
+            onComplete={handleEvaluationComplete}
+            attempts={evaluationAttempts}
+          />
         )}
       </div>
     </div>

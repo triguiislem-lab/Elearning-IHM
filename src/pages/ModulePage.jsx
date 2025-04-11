@@ -1,26 +1,50 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { getAuth } from "firebase/auth";
-import { getDatabase, ref, get } from "firebase/database";
+import { useAuth } from "../hooks/useAuth";
 import { ArrowLeft } from "lucide-react";
 import ModuleContent from "../components/CourseModules/ModuleContent";
+import {
+  fetchModuleDetails,
+  fetchUserEnrollments,
+  fetchCourseById,
+} from "../utils/firebaseUtils";
+import { database } from "../../firebaseConfig";
+import { ref, set, get } from "firebase/database";
+import OptimizedLoadingSpinner from "../components/Common/OptimizedLoadingSpinner";
 
 const ModulePage = () => {
-  const { id: courseId, moduleId } = useParams();
+  const params = useParams();
+  const courseId = params.id;
+  const moduleId = params.moduleId;
+
   const navigate = useNavigate();
-  const [course, setCourse] = useState(null);
-  const [module, setModule] = useState(null);
+  const { user } = useAuth();
+  const [moduleData, setModuleData] = useState(null);
+  const [courseData, setCourseData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isEnrolled, setIsEnrolled] = useState(false);
 
-  const auth = getAuth();
-  const database = getDatabase();
-
   useEffect(() => {
-    const fetchData = async () => {
-      if (!courseId || !moduleId) {
-        setError("Identifiants de cours ou de module manquants");
+    const loadModuleData = async () => {
+      console.log("Loading module data with:", {
+        courseId,
+        moduleId,
+        userId: user?.uid,
+      });
+
+      // Validation des paramètres
+      if (!courseId || !moduleId || !user) {
+        const missingParams = [];
+        if (!courseId) missingParams.push("courseId");
+        if (!moduleId) missingParams.push("moduleId");
+        if (!user) missingParams.push("user");
+
+        const errorMessage = `Informations manquantes: ${missingParams.join(
+          ", "
+        )}`;
+        console.error(errorMessage);
+        setError(errorMessage);
         setLoading(false);
         return;
       }
@@ -29,151 +53,151 @@ const ModulePage = () => {
         setLoading(true);
         setError("");
 
-        // Récupérer les informations du cours (nouvelle structure)
-        const courseRef = ref(database, `elearning/courses/${courseId}`);
-        let courseSnapshot = await get(courseRef);
-
-        // Si le cours n'est pas trouvé dans la nouvelle structure, essayer l'ancienne structure
-        if (!courseSnapshot.exists()) {
-          const legacyCourseRef = ref(database, `Elearning/Cours/${courseId}`);
-          courseSnapshot = await get(legacyCourseRef);
-
-          if (!courseSnapshot.exists()) {
-            setError("Cours non trouvé");
-            setLoading(false);
-            return;
-          }
-        }
-
-        const courseData = courseSnapshot.val();
-        setCourse(courseData);
-
-        // Récupérer les informations du module
-        let moduleData = null;
-
-        // Vérifier si les modules sont stockés sous forme d'objet ou de tableau
-        if (courseData.modules) {
-          if (Array.isArray(courseData.modules)) {
-            // Si c'est un tableau, chercher par index ou par id
-            if (!isNaN(moduleId)) {
-              moduleData = courseData.modules[parseInt(moduleId)];
-            } else {
-              moduleData = courseData.modules.find((m) => m.id === moduleId);
-            }
-          } else {
-            // Si c'est un objet, chercher par clé
-            moduleData = courseData.modules[moduleId];
-          }
-        }
-
-        if (!moduleData) {
-          setError("Module non trouvé");
+        // Fetch course data
+        console.log("Fetching course data for:", courseId);
+        const course = await fetchCourseById(courseId);
+        if (!course) {
+          const errorMessage = `Cours non trouvé (ID: ${courseId})`;
+          console.error(errorMessage);
+          setError(errorMessage);
           setLoading(false);
           return;
         }
+        console.log("Course data retrieved:", course);
+        setCourseData(course);
 
-        // Ajouter l'ID du cours et du module aux données du module
-        moduleData = {
-          ...moduleData,
-          id: moduleId,
-          courseId: courseId,
-        };
+        // Chercher le vrai ID du module si c'est un index
+        let realModuleId = moduleId;
 
-        setModule(moduleData);
+        // Gérer le cas spécial où moduleId est "0" mais peut être un ID valide
+        // et pas nécessairement un index
+        if (moduleId === "0") {
+          // D'abord, essayons de vérifier si un module avec l'ID "0" existe vraiment
+          try {
+            const directModuleRef = ref(
+              database,
+              `elearning/courses/${courseId}/modules/0`
+            );
+            const directSnapshot = await get(directModuleRef);
 
-        // Vérifier si l'utilisateur est inscrit au cours (vérification complète)
-        if (auth.currentUser) {
-          // Chemins à vérifier pour l'inscription
-          const enrollmentPaths = [
-            `elearning/enrollments/${auth.currentUser.uid}/${courseId}`,
-            `elearning/enrollments/byCourse/${courseId}/${auth.currentUser.uid}`,
-            `elearning/enrollments/byUser/${auth.currentUser.uid}/${courseId}`,
-            `elearning/progress/${auth.currentUser.uid}/${courseId}`,
-            `Elearning/Enrollments/${courseId}/${auth.currentUser.uid}`,
-            `Elearning/Enrollments/byUser/${auth.currentUser.uid}/${courseId}`,
-            `Elearning/Cours/${courseId}/enrollments/${auth.currentUser.uid}`,
-            `Elearning/Progression/${auth.currentUser.uid}/${courseId}`,
-          ];
-
-          // Vérifier chaque chemin
-          let isUserEnrolled = false;
-          for (const path of enrollmentPaths) {
-            try {
-              
-              const pathRef = ref(database, path);
-              const snapshot = await get(pathRef);
-
-              if (snapshot.exists()) {
-                
-                isUserEnrolled = true;
-                break;
-              }
-            } catch (error) {
-              
+            if (directSnapshot.exists()) {
+              console.log('Module avec ID "0" trouvé directement');
+              realModuleId = "0"; // On garde l'ID tel quel
+            }
+            // Si nous ne trouvons pas de module avec ID "0", il se peut que ce soit un index
+            else if (
+              course.modules &&
+              Array.isArray(course.modules) &&
+              course.modules.length > 0
+            ) {
+              // Utiliser l'ID du premier module (index 0)
+              realModuleId = course.modules[0].id;
+              console.log(
+                `Module avec ID "0" non trouvé, utilisation du premier module (ID: ${realModuleId})`
+              );
+            }
+          } catch (err) {
+            console.warn(
+              "Erreur lors de la vérification du module avec ID 0:",
+              err
+            );
+            // En cas d'erreur, on essaie quand même l'approche par index
+            if (
+              course.modules &&
+              Array.isArray(course.modules) &&
+              course.modules.length > 0
+            ) {
+              realModuleId = course.modules[0].id;
             }
           }
-
-          // Vérifier également dans le stockage local
-          const enrolledInLocalStorage =
-            localStorage.getItem(
-              `enrolled_${auth.currentUser.uid}_${courseId}`
-            ) === "true";
-          if (enrolledInLocalStorage) {
-            
-            isUserEnrolled = true;
-          }
-
-          setIsEnrolled(isUserEnrolled);
-
-          // Si l'utilisateur est inscrit, stocker cette information dans le stockage local
-          if (isUserEnrolled) {
-            localStorage.setItem(
-              `enrolled_${auth.currentUser.uid}_${courseId}`,
-              "true"
+        }
+        // Pour tous les autres cas numériques qui ne sont pas "0"
+        else if (
+          !isNaN(parseInt(moduleId)) &&
+          course.modules &&
+          Array.isArray(course.modules)
+        ) {
+          const moduleIndex = parseInt(moduleId);
+          // Vérifier si le moduleIndex est valide dans le tableau des modules
+          if (moduleIndex >= 0 && moduleIndex < course.modules.length) {
+            // Utiliser l'ID réel du module plutôt que l'index
+            realModuleId = course.modules[moduleIndex].id;
+            console.log(
+              `Converted module index ${moduleId} to module ID ${realModuleId}`
             );
           }
         }
 
-        setLoading(false);
+        // Fetch module data with the real module ID
+        console.log("Fetching module data for:", {
+          courseId,
+          moduleId: realModuleId,
+        });
+        const module = await fetchModuleDetails(courseId, realModuleId);
+        if (!module) {
+          const errorMessage = `Module non trouvé (Cours: ${courseId}, Module: ${realModuleId})`;
+          console.error(errorMessage);
+          setError(errorMessage);
+          setLoading(false);
+          return;
+        }
+        console.log("Module data retrieved:", module);
+        setModuleData(module);
+
+        // Check enrollment
+        console.log("Checking enrollment for user:", user.uid);
+        const enrollments = await fetchUserEnrollments(user.uid);
+        const isUserEnrolled = enrollments.some((e) => e.courseId === courseId);
+        console.log("Enrollment status:", isUserEnrolled);
+        setIsEnrolled(isUserEnrolled);
+
+        if (!isUserEnrolled) {
+          console.warn("User not enrolled in course:", {
+            userId: user.uid,
+            courseId,
+          });
+        }
       } catch (error) {
-        
-        setError(
-          `Erreur lors de la récupération des données: ${error.message}`
-        );
+        console.error("Error loading module data:", error);
+        setError(`Erreur lors du chargement des données: ${error.message}`);
+      } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [courseId, moduleId, database, auth.currentUser]);
+    loadModuleData();
+  }, [courseId, moduleId, user]);
 
-  const handleModuleComplete = (score) => {
-    
-    // Vous pouvez ajouter ici une logique pour mettre à jour la progression
+  const handleModuleComplete = async (score) => {
+    if (!user || !courseId || !moduleId) return;
+
+    try {
+      const progressRef = ref(
+        database,
+        `elearning/progress/${user.uid}/${courseId}/modules/${moduleId}`
+      );
+      await set(progressRef, {
+        completed: true,
+        score: score,
+        completedAt: new Date().toISOString(),
+      });
+
+      // Optionally navigate to next module or show completion message
+      navigate(`/course/${courseId}`);
+    } catch (error) {
+      setError("Erreur lors de la mise à jour de la progression");
+    }
   };
 
   if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
-        </div>
-      </div>
-    );
+    return <OptimizedLoadingSpinner />;
   }
 
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
-          <h2 className="text-xl font-semibold text-red-700 mb-2">Erreur</h2>
-          <p className="text-red-600">{error}</p>
-          <button
-            onClick={() => navigate(-1)}
-            className="mt-4 px-4 py-2 bg-secondary text-white rounded-md hover:bg-secondary/90 transition-colors duration-300"
-          >
-            Retour
-          </button>
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          {error}
         </div>
       </div>
     );
@@ -184,48 +208,29 @@ const ModulePage = () => {
       <div className="mb-6">
         <Link
           to={`/course/${courseId}`}
-          className="inline-flex items-center text-secondary hover:text-secondary/80 transition-colors duration-300"
+          className="flex items-center text-blue-600 hover:text-blue-800"
         >
-          <ArrowLeft size={16} className="mr-1" />
+          <ArrowLeft className="w-4 h-4 mr-2" />
           Retour au cours
         </Link>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold mb-2">
-            {module.title || module.titre || `Module ${moduleId}`}
-          </h1>
-          <p className="text-gray-600 mb-6">
-            {module.description ||
-              "Aucune description disponible pour ce module."}
-          </p>
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h1 className="text-2xl font-bold mb-4">{moduleData?.title}</h1>
+        <p className="text-gray-600 mb-6">{moduleData?.description}</p>
 
-          {!isEnrolled && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
-              <div className="flex">
-                <div className="ml-3">
-                  <p className="text-sm text-yellow-700">
-                    Vous n'êtes pas inscrit à ce cours. Certaines
-                    fonctionnalités peuvent être limitées.
-                  </p>
-                  <Link
-                    to={`/course/${courseId}`}
-                    className="mt-2 inline-block text-sm font-medium text-yellow-700 hover:text-yellow-600"
-                  >
-                    S'inscrire au cours
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-
+        {!isEnrolled ? (
+          <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+            Vous devez être inscrit au cours pour accéder à ce module.
+          </div>
+        ) : (
           <ModuleContent
-            module={module}
+            module={moduleData}
             onComplete={handleModuleComplete}
             isEnrolled={isEnrolled}
+            courseId={courseId}
           />
-        </div>
+        )}
       </div>
     </div>
   );

@@ -15,7 +15,13 @@ import {
 } from "react-icons/md";
 import { getAvatarUrl } from "../../utils/avatarUtils";
 
-const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
+const ResponsiveMenu = ({
+  isOpen,
+  user,
+  userRole,
+  isAuthenticated,
+  handleLogout,
+}) => {
   return (
     <AnimatePresence mode="wait">
       {isOpen && (
@@ -38,20 +44,20 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                   </Link>
                 </li>
               ))}
-              {user ? (
+              {isAuthenticated ? (
                 <>
-                  {userInfo && (
+                  {user && (
                     <li className="flex flex-col items-center mb-4">
                       <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-secondary mb-2">
                         <img
                           src={
-                            userInfo
-                              ? getAvatarUrl(userInfo)
+                            user
+                              ? getAvatarUrl(user)
                               : "https://ui-avatars.com/api/?name=U&background=0D8ABC&color=fff&size=256"
                           }
                           alt={
-                            userInfo
-                              ? `${userInfo.prenom || ""} ${userInfo.nom || ""}`
+                            user
+                              ? `${user.firstName || ""} ${user.lastName || ""}`
                               : "User avatar"
                           }
                           className="w-full h-full object-cover"
@@ -62,21 +68,15 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                         />
                       </div>
                       <span className="font-medium text-lg">
-                        {userInfo
-                          ? `${userInfo.prenom || ""} ${userInfo.nom || ""}`
+                        {user
+                          ? `${user.firstName || ""} ${user.lastName || ""}`
                           : "Utilisateur"}
                       </span>
                     </li>
                   )}
                   <li>
                     <Link
-                      to={
-                        userType === "admin"
-                          ? "/admin/dashboard"
-                          : userType === "instructor"
-                          ? "/instructor/courses"
-                          : "/student/dashboard"
-                      }
+                      to={`/${userRole.toLowerCase()}/dashboard`}
                       className="hover:text-secondary transition-colors duration-300 flex items-center gap-2"
                     >
                       <MdDashboard />
@@ -93,7 +93,7 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                     </Link>
                   </li>
                   {/* Lien vers les cours selon le rôle */}
-                  {userType === "student" && (
+                  {userRole === "student" && (
                     <li>
                       <Link
                         to="/student/enrollments"
@@ -104,7 +104,7 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                       </Link>
                     </li>
                   )}
-                  {userType === "instructor" && (
+                  {userRole === "instructor" && (
                     <li>
                       <Link
                         to="/instructor/courses"
@@ -115,7 +115,7 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                       </Link>
                     </li>
                   )}
-                  {userType === "admin" && (
+                  {userRole === "admin" && (
                     <li>
                       <Link
                         to="/admin/courses"
@@ -132,9 +132,9 @@ const ResponsiveMenu = ({ isOpen, user, userType, userInfo, handleLogout }) => {
                       className="hover:text-secondary transition-colors duration-300 flex items-center gap-2"
                     >
                       <MdMessage />
-                      {userType === "admin"
+                      {userRole === "admin"
                         ? "Messages"
-                        : userType === "instructor"
+                        : userRole === "instructor"
                         ? "Messages des étudiants"
                         : "Contacter les formateurs"}
                     </Link>

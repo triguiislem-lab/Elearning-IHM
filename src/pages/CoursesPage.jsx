@@ -15,6 +15,7 @@ import {
   fetchSpecialitesFromDatabase,
   fetchDisciplinesFromDatabase,
 } from "../utils/firebaseUtils";
+import OptimizedLoadingSpinner from "../components/Common/OptimizedLoadingSpinner";
 
 const CoursesPage = () => {
   const [courses, setCourses] = useState([]);
@@ -42,7 +43,6 @@ const CoursesPage = () => {
         const disciplinesData = await fetchDisciplinesFromDatabase();
         setDisciplines(disciplinesData);
       } catch (error) {
-        
       } finally {
         setLoading(false);
       }
@@ -83,7 +83,7 @@ const CoursesPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+        <OptimizedLoadingSpinner size="large" text="Chargement des cours..." />
       </div>
     );
   }
@@ -196,7 +196,6 @@ const CoursesPage = () => {
                   alt={course.title || course.titre || "Course"}
                   className="w-full h-56 object-cover"
                   onError={(e) => {
-                    
                     e.target.src =
                       "https://images.unsplash.com/photo-1498050108023-c5249f4df085?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80";
                   }}

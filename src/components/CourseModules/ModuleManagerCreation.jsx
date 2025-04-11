@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import OptimizedLoadingSpinner from "../Common/OptimizedLoadingSpinner";
 import {
@@ -14,6 +14,8 @@ import {
   MdPictureAsPdf,
   MdLink,
   MdAttachFile,
+  MdUpload,
+  MdClose,
 } from "react-icons/md";
 
 const ModuleManagerCreation = ({ modules, setModules }) => {
@@ -59,31 +61,75 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
     type: "video",
     url: "",
     description: "",
+    file: null,
   });
 
-  const handleAddModule = (e) => {
+  const fileInputRef = useRef(null);
+
+  const [showEvaluationDetails, setShowEvaluationDetails] = useState(false);
+  const [selectedEvaluation, setSelectedEvaluation] = useState(null);
+  const [selectedModuleForEdit, setSelectedModuleForEdit] = useState(null);
+
+  const handleAddModule = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setSuccess("");
 
     try {
+      // Vérifier si le titre est vide
+      if (!moduleData.title.trim()) {
+        throw new Error("Le titre du module est requis");
+      }
+
+      // Vérifier si un module avec le même titre existe déjà
+      const moduleExists = modules.some(
+        (module) =>
+          module.title.toLowerCase() === moduleData.title.toLowerCase()
+      );
+
+      if (moduleExists) {
+        throw new Error("Un module avec ce titre existe déjà");
+      }
+
       // Générer un ID temporaire pour le module
-      const tempModuleId = `temp_module_${Date.now()}`;
+      const tempModuleId = `temp_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2)}`;
 
       // Créer le nouveau module
       const newModule = {
-        ...moduleData,
         id: tempModuleId,
+        title: moduleData.title.trim(),
+        description: moduleData.description.trim(),
+        order: moduleData.order || modules.length + 1,
+        status: "active",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        status: "active",
         evaluations: {},
         resources: [],
       };
 
+      // Vérifier si le module existe déjà dans la liste (par ID)
+      const moduleAlreadyExists = modules.some(
+        (module) => module.id === tempModuleId
+      );
+
+      if (moduleAlreadyExists) {
+        throw new Error("Ce module existe déjà dans la liste");
+      }
+
       // Ajouter le module à la liste
-      setModules([...modules, newModule]);
+      setModules((prevModules) => {
+        // Vérifier si le module existe déjà par titre
+        const exists = prevModules.some(
+          (module) =>
+            module.title.toLowerCase() === newModule.title.toLowerCase()
+        );
+        if (exists) {
+          throw new Error("Un module avec ce titre existe déjà");
+        }
+        return [...prevModules, newModule];
+      });
 
       // Réinitialiser le formulaire
       setModuleData({
@@ -121,6 +167,11 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
     }
 
     try {
+      // S'assurer que evaluationData.questions existe
+      if (!evaluationData.questions) {
+        evaluationData.questions = [];
+      }
+
       // Ajouter ou mettre à jour la question
       const updatedQuestions = [...evaluationData.questions];
 
@@ -129,7 +180,7 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         updatedQuestions[editingQuestionIndex] = {
           ...currentQuestion,
           id:
-            updatedQuestions[editingQuestionIndex].id ||
+            updatedQuestions[editingQuestionIndex]?.id ||
             `q_${Date.now()}_${Math.random().toString(36).substring(2)}`,
         };
       } else {
@@ -145,6 +196,28 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         ...evaluationData,
         questions: updatedQuestions,
       });
+
+      // Si nous sommes en train d'éditer une question depuis le popup d'évaluation
+      if (selectedModuleForEdit && selectedEvaluation) {
+        // Mettre à jour le module avec la nouvelle liste de questions
+        setModules((prevModules) =>
+          prevModules.map((module) => {
+            if (module.id === selectedModuleForEdit.id) {
+              return {
+                ...module,
+                evaluations: {
+                  ...module.evaluations,
+                  [selectedEvaluation.id]: {
+                    ...selectedEvaluation,
+                    questions: updatedQuestions,
+                  },
+                },
+              };
+            }
+            return module;
+          })
+        );
+      }
 
       // Réinitialiser le formulaire de question
       setCurrentQuestion({
@@ -208,43 +281,77 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
 
     try {
       if (!selectedModule) {
-        throw new Error("Aucun module sélectionné");
+        throw new Error("Veuillez sélectionner un module");
       }
 
-      // Vérifier que l'évaluation a au moins une question si c'est un quiz
+      // Validation des champs de l'évaluation
+      if (!evaluationData.title.trim()) {
+        throw new Error("Le titre de l'évaluation est requis");
+      }
+
+      if (!evaluationData.type) {
+        throw new Error("Le type d'évaluation est requis");
+      }
+
       if (
         evaluationData.type === "quiz" &&
-        evaluationData.questions.length === 0
+        (!evaluationData.questions || evaluationData.questions.length === 0)
       ) {
-        throw new Error("Veuillez ajouter au moins une question à ce quiz");
+        throw new Error("Vous devez ajouter au moins une question à ce quiz");
       }
 
-      // Générer un ID temporaire pour l'évaluation
-      const tempEvalId = `temp_eval_${Date.now()}`;
+      // Vérifier si une évaluation avec le même titre existe déjà dans ce module
+      const evaluationExists = Object.values(
+        selectedModule.evaluations || {}
+      ).some(
+        (evaluation) =>
+          evaluation.title.toLowerCase() === evaluationData.title.toLowerCase()
+      );
+
+      if (evaluationExists) {
+        throw new Error(
+          "Une évaluation avec ce titre existe déjà dans ce module"
+        );
+      }
+
+      // Générer un ID unique pour l'évaluation
+      const evalId = `eval_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2)}`;
 
       // Créer la nouvelle évaluation
       const newEvaluation = {
-        ...evaluationData,
-        id: tempEvalId,
-        moduleId: selectedModule.id,
-        date: new Date().toISOString(),
+        id: evalId,
+        title: evaluationData.title.trim(),
+        type: evaluationData.type,
+        description: evaluationData.description.trim(),
+        maxScore: parseInt(evaluationData.maxScore, 10) || 100,
+        score: 0,
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        questions: evaluationData.questions || [],
       };
 
-      // Mettre à jour le module sélectionné avec la nouvelle évaluation
-      const updatedModules = modules.map((module) => {
-        if (module.id === selectedModule.id) {
-          return {
-            ...module,
-            evaluations: {
-              ...module.evaluations,
-              [tempEvalId]: newEvaluation,
-            },
-          };
-        }
-        return module;
-      });
+      // Mise à jour du module avec la nouvelle évaluation
+      setModules((prevModules) =>
+        prevModules.map((module) => {
+          if (module.id === selectedModule.id) {
+            // S'assurer que evaluations est un objet
+            const moduleEvaluations = module.evaluations || {};
 
-      setModules(updatedModules);
+            return {
+              ...module,
+              evaluations: {
+                ...moduleEvaluations,
+                [evalId]: newEvaluation,
+              },
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return module;
+        })
+      );
 
       // Réinitialiser le formulaire
       setEvaluationData({
@@ -256,16 +363,39 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         questions: [],
       });
 
+      setCurrentQuestion({
+        question: "",
+        options: ["", "", "", ""],
+        correctAnswer: 0,
+        explanation: "",
+      });
+
       setShowAddEvaluation(false);
-      setSelectedModule(null);
       setSuccess("Évaluation ajoutée avec succès");
 
       // Effacer le message de succès après 3 secondes
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
+      console.error("Erreur lors de l'ajout de l'évaluation:", error);
       setError(`Erreur: ${error.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.type === "application/pdf") {
+        setResourceData({
+          ...resourceData,
+          file,
+          type: "pdf",
+          title: file.name,
+        });
+      } else {
+        setError("Seuls les fichiers PDF sont acceptés");
+      }
     }
   };
 
@@ -277,37 +407,94 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
 
     try {
       if (!selectedModule) {
-        throw new Error("Aucun module sélectionné");
+        throw new Error("Veuillez sélectionner un module");
       }
 
-      // Valider l'URL
-      if (!resourceData.url) {
-        throw new Error("L'URL de la ressource est obligatoire");
+      // Validation des champs de ressource
+      if (!resourceData.title.trim()) {
+        throw new Error("Le titre de la ressource est requis");
       }
 
-      // Générer un ID temporaire pour la ressource
-      const tempResourceId = `temp_resource_${Date.now()}`;
+      if (!resourceData.type) {
+        throw new Error("Le type de ressource est requis");
+      }
+
+      // Validation spécifique selon le type de ressource
+      if (resourceData.type === "link" || resourceData.type === "video") {
+        if (!resourceData.url.trim()) {
+          throw new Error(
+            `L'URL de la ${
+              resourceData.type === "video" ? "vidéo" : "ressource"
+            } est requise`
+          );
+        }
+
+        // Validation basique du format URL
+        try {
+          new URL(resourceData.url);
+        } catch (e) {
+          throw new Error("L'URL fournie n'est pas valide");
+        }
+      }
+
+      // Validation pour les fichiers PDF
+      if (
+        resourceData.type === "pdf" &&
+        !resourceData.file &&
+        !resourceData.url.trim()
+      ) {
+        throw new Error(
+          "Veuillez sélectionner un fichier PDF ou fournir une URL"
+        );
+      }
+
+      // Générer un ID unique pour la ressource
+      const resourceId = `resource_${Date.now()}_${Math.random()
+        .toString(36)
+        .substring(2)}`;
 
       // Créer la nouvelle ressource
       const newResource = {
-        ...resourceData,
-        id: tempResourceId,
-        moduleId: selectedModule.id,
+        id: resourceId,
+        title: resourceData.title.trim(),
+        type: resourceData.type,
+        url: resourceData.url.trim(),
+        description: resourceData.description.trim(),
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
-      // Mettre à jour le module sélectionné avec la nouvelle ressource
-      const updatedModules = modules.map((module) => {
-        if (module.id === selectedModule.id) {
-          return {
-            ...module,
-            resources: [...(module.resources || []), newResource],
-          };
-        }
-        return module;
-      });
+      // Si c'est un fichier, ajouter les métadonnées du fichier
+      if (resourceData.file) {
+        newResource.fileName = resourceData.file.name;
+        newResource.fileSize = resourceData.file.size;
+        newResource.fileType = resourceData.file.type;
 
-      setModules(updatedModules);
+        // TODO: Implémenter le chargement du fichier vers un stockage (Firebase Storage)
+        // Pour l'instant, nous utilisons juste l'URL ou un placeholder
+        if (!newResource.url) {
+          newResource.url = "#"; // Placeholder URL
+        }
+      }
+
+      // Ajouter la ressource au module
+      setModules((prevModules) =>
+        prevModules.map((module) => {
+          if (module.id === selectedModule.id) {
+            // S'assurer que le tableau resources existe
+            const moduleResources = Array.isArray(module.resources)
+              ? module.resources
+              : [];
+
+            return {
+              ...module,
+              resources: [...moduleResources, newResource],
+              updatedAt: new Date().toISOString(), // Mettre à jour le timestamp du module
+            };
+          }
+          return module;
+        })
+      );
 
       // Réinitialiser le formulaire
       setResourceData({
@@ -315,15 +502,21 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         type: "video",
         url: "",
         description: "",
+        file: null,
       });
 
+      // Réinitialiser le champ de fichier si nécessaire
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
       setShowAddResource(false);
-      setSelectedModule(null);
       setSuccess("Ressource ajoutée avec succès");
 
       // Effacer le message de succès après 3 secondes
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
+      console.error("Erreur lors de l'ajout de la ressource:", error);
       setError(`Erreur: ${error.message}`);
     } finally {
       setLoading(false);
@@ -332,19 +525,38 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
 
   const handleDeleteModule = (moduleId) => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce module ?")) {
-      const updatedModules = modules.filter((module) => module.id !== moduleId);
+      try {
+        // Filtrer les modules pour supprimer celui avec l'ID spécifié
+        const updatedModules = modules.filter(
+          (module) => module.id !== moduleId
+        );
 
-      // Réorganiser les ordres des modules restants
-      const reorderedModules = updatedModules.map((module, index) => ({
-        ...module,
-        order: index + 1,
-      }));
+        // Vérifier si le module a été supprimé
+        if (updatedModules.length === modules.length) {
+          throw new Error("Module non trouvé ou déjà supprimé");
+        }
 
-      setModules(reorderedModules);
-      setSuccess("Module supprimé avec succès");
+        // Réorganiser les ordres des modules restants
+        const reorderedModules = updatedModules.map((module, index) => ({
+          ...module,
+          order: index + 1,
+        }));
 
-      // Effacer le message de succès après 3 secondes
-      setTimeout(() => setSuccess(""), 3000);
+        // Mettre à jour l'état des modules
+        setModules(reorderedModules);
+
+        // Réinitialiser le module sélectionné si c'était celui qui vient d'être supprimé
+        if (selectedModule && selectedModule.id === moduleId) {
+          setSelectedModule(null);
+        }
+
+        setSuccess("Module supprimé avec succès");
+
+        // Effacer le message de succès après 3 secondes
+        setTimeout(() => setSuccess(""), 3000);
+      } catch (error) {
+        setError(`Erreur lors de la suppression du module: ${error.message}`);
+      }
     }
   };
 
@@ -423,6 +635,84 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
     }));
 
     setModules(reorderedModules);
+  };
+
+  const handleShowEvaluationDetails = (evaluation, module) => {
+    setSelectedEvaluation(evaluation);
+    setSelectedModuleForEdit(module);
+    setShowEvaluationDetails(true);
+  };
+
+  const handleEditQuestionFromPopup = (questionIndex) => {
+    if (
+      selectedModuleForEdit &&
+      selectedEvaluation &&
+      selectedEvaluation.questions &&
+      selectedEvaluation.questions[questionIndex]
+    ) {
+      // Copier la question sélectionnée dans le formulaire
+      const questionToEdit = selectedEvaluation.questions[questionIndex];
+      setCurrentQuestion({
+        question: questionToEdit.question || "",
+        options: [...(questionToEdit.options || ["", "", "", ""])],
+        correctAnswer: questionToEdit.correctAnswer || 0,
+        explanation: questionToEdit.explanation || "",
+      });
+
+      // Définir l'index de la question en cours d'édition
+      setEditingQuestionIndex(questionIndex);
+
+      // Ouvrir le formulaire d'édition
+      setShowAddQuestion(true);
+
+      // Fermer le popup d'évaluation
+      setShowEvaluationDetails(false);
+
+      // Définir le module sélectionné pour que la mise à jour fonctionne correctement
+      setSelectedModule(selectedModuleForEdit);
+    } else {
+      setError("Impossible d'éditer cette question. Données manquantes.");
+    }
+  };
+
+  const handleDeleteQuestionFromPopup = (questionIndex) => {
+    if (
+      selectedModuleForEdit &&
+      selectedEvaluation &&
+      selectedEvaluation.questions &&
+      selectedEvaluation.questions[questionIndex]
+    ) {
+      if (
+        window.confirm("Êtes-vous sûr de vouloir supprimer cette question ?")
+      ) {
+        const updatedQuestions = [...selectedEvaluation.questions];
+        updatedQuestions.splice(questionIndex, 1);
+
+        // Mettre à jour le module avec la nouvelle liste de questions
+        setModules((prevModules) =>
+          prevModules.map((module) => {
+            if (module.id === selectedModuleForEdit.id) {
+              return {
+                ...module,
+                evaluations: {
+                  ...module.evaluations,
+                  [selectedEvaluation.id]: {
+                    ...selectedEvaluation,
+                    questions: updatedQuestions,
+                  },
+                },
+              };
+            }
+            return module;
+          })
+        );
+
+        setSuccess("Question supprimée avec succès");
+        setTimeout(() => setSuccess(""), 3000);
+      }
+    } else {
+      setError("Impossible de supprimer cette question. Données manquantes.");
+    }
   };
 
   return (
@@ -603,7 +893,10 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
                         ([evalId, evaluation]) => (
                           <div
                             key={evalId}
-                            className="flex justify-between items-center p-2 bg-gray-50 rounded-md"
+                            className="flex justify-between items-center p-2 bg-gray-50 rounded-md cursor-pointer hover:bg-gray-100"
+                            onClick={() =>
+                              handleShowEvaluationDetails(evaluation, module)
+                            }
                           >
                             <div className="flex items-center gap-2">
                               {evaluation.type === "quiz" ? (
@@ -619,9 +912,10 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
                                 {evaluation.maxScore || 100}
                               </span>
                               <button
-                                onClick={() =>
-                                  handleDeleteEvaluation(module.id, evalId)
-                                }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteEvaluation(module.id, evalId);
+                                }}
                                 className="text-red-600 hover:text-red-800"
                                 title="Supprimer l'évaluation"
                               >
@@ -1154,80 +1448,109 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         </div>
       )}
 
-      {/* Modal pour ajouter une ressource */}
-      {showAddResource && selectedModule && (
+      {/* Formulaire d'ajout de ressource */}
+      {showAddResource && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg p-6 w-full max-w-md"
-          >
-            <h3 className="text-xl font-bold mb-4">
-              Ajouter une ressource au module "
-              {selectedModule.title || "Module"}"
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-xl font-semibold mb-4">
+              Ajouter une ressource
             </h3>
             <form onSubmit={handleAddResource}>
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type de ressource
+                </label>
+                <select
+                  className="w-full p-2 border rounded"
+                  value={resourceData.type}
+                  onChange={(e) => {
+                    setResourceData({
+                      ...resourceData,
+                      type: e.target.value,
+                      file: null,
+                      url: "",
+                    });
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
+                  }}
+                >
+                  <option value="video">Vidéo YouTube</option>
+                  <option value="pdf">PDF</option>
+                  <option value="link">Lien externe</option>
+                </select>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Titre
                 </label>
                 <input
                   type="text"
+                  className="w-full p-2 border rounded"
                   value={resourceData.title}
                   onChange={(e) =>
-                    setResourceData({
-                      ...resourceData,
-                      title: e.target.value,
-                    })
+                    setResourceData({ ...resourceData, title: e.target.value })
                   }
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                   placeholder="Titre de la ressource"
-                  required
                 />
               </div>
+
+              {resourceData.type === "pdf" ? (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fichier PDF
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept=".pdf"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      <MdUpload className="mr-2" />
+                      Choisir un fichier
+                    </button>
+                    {resourceData.file && (
+                      <span className="text-sm text-gray-600">
+                        {resourceData.file.name}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    URL
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full p-2 border rounded"
+                    value={resourceData.url}
+                    onChange={(e) =>
+                      setResourceData({ ...resourceData, url: e.target.value })
+                    }
+                    placeholder={
+                      resourceData.type === "video"
+                        ? "URL YouTube"
+                        : "URL de la ressource"
+                    }
+                  />
+                </div>
+              )}
+
               <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  Type
-                </label>
-                <select
-                  value={resourceData.type}
-                  onChange={(e) =>
-                    setResourceData({
-                      ...resourceData,
-                      type: e.target.value,
-                    })
-                  }
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  required
-                >
-                  <option value="video">Vidéo</option>
-                  <option value="pdf">Document PDF</option>
-                  <option value="link">Lien externe</option>
-                </select>
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
-                  URL
-                </label>
-                <input
-                  type="url"
-                  value={resourceData.url}
-                  onChange={(e) =>
-                    setResourceData({
-                      ...resourceData,
-                      url: e.target.value,
-                    })
-                  }
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
-                  placeholder="URL de la ressource (YouTube, PDF, etc.)"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-700 text-sm font-bold mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
                   Description
                 </label>
                 <textarea
+                  className="w-full p-2 border rounded"
                   value={resourceData.description}
                   onChange={(e) =>
                     setResourceData({
@@ -1235,37 +1558,196 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
                       description: e.target.value,
                     })
                   }
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
                   placeholder="Description de la ressource"
                   rows="3"
                 />
               </div>
-              <div className="flex justify-end space-x-3">
+
+              <div className="flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddResource(false);
-                    setSelectedModule(null);
+                    setResourceData({
+                      title: "",
+                      type: "video",
+                      url: "",
+                      description: "",
+                    });
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = "";
+                    }
                   }}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded-md flex items-center gap-2 hover:bg-gray-400 transition-colors duration-300"
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
                 >
-                  <MdCancel />
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="bg-secondary text-white px-4 py-2 rounded-md flex items-center gap-2 hover:bg-secondary/90 transition-colors duration-300"
+                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
                   disabled={loading}
                 >
                   {loading ? (
-                    <OptimizedLoadingSpinner size="small" text="" />
+                    <OptimizedLoadingSpinner size="small" />
                   ) : (
-                    <MdSave />
+                    "Ajouter"
                   )}
-                  Enregistrer
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Popup pour afficher les détails de l'évaluation */}
+      {showEvaluationDetails && selectedEvaluation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">{selectedEvaluation.title}</h3>
+              <button
+                onClick={() => setShowEvaluationDetails(false)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <MdClose size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-gray-600">
+                  {selectedEvaluation.description}
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-sm font-medium">Type:</span>
+                  <span className="text-sm">
+                    {selectedEvaluation.type === "quiz" ? "Quiz" : "Devoir"}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-sm font-medium">Score:</span>
+                  <span className="text-sm">
+                    {selectedEvaluation.score || 0} /{" "}
+                    {selectedEvaluation.maxScore || 100}
+                  </span>
+                </div>
+              </div>
+
+              {selectedEvaluation.questions &&
+                selectedEvaluation.questions.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-semibold text-lg">Questions</h4>
+                      <button
+                        onClick={() => {
+                          setShowEvaluationDetails(false);
+                          setSelectedModule(selectedModuleForEdit);
+                          setShowAddQuestion(true);
+                          setCurrentQuestion({
+                            question: "",
+                            options: ["", "", "", ""],
+                            correctAnswer: 0,
+                            explanation: "",
+                          });
+                        }}
+                        className="flex items-center gap-2 px-3 py-1 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                      >
+                        <MdAdd size={20} />
+                        Ajouter une question
+                      </button>
+                    </div>
+                    {selectedEvaluation.questions.map((question, index) => (
+                      <div
+                        key={index}
+                        className="border border-gray-200 rounded-lg p-4"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <p className="font-medium">
+                            {index + 1}. {question.question}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEditQuestionFromPopup(index)}
+                              className="text-blue-600 hover:text-blue-800"
+                              title="Modifier la question"
+                            >
+                              <MdEdit size={20} />
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleDeleteQuestionFromPopup(index)
+                              }
+                              className="text-red-600 hover:text-red-800"
+                              title="Supprimer la question"
+                            >
+                              <MdDelete size={20} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {question.options.map((option, optIndex) => (
+                            <div
+                              key={optIndex}
+                              className={`p-2 rounded ${
+                                optIndex === question.correctAnswer
+                                  ? "bg-green-50 border border-green-200"
+                                  : "bg-gray-50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`w-6 h-6 flex items-center justify-center rounded-full ${
+                                    optIndex === question.correctAnswer
+                                      ? "bg-green-500 text-white"
+                                      : "bg-gray-200"
+                                  }`}
+                                >
+                                  {String.fromCharCode(65 + optIndex)}
+                                </span>
+                                <span
+                                  className={
+                                    optIndex === question.correctAnswer
+                                      ? "text-green-700 font-medium"
+                                      : ""
+                                  }
+                                >
+                                  {option}
+                                </span>
+                                {optIndex === question.correctAnswer && (
+                                  <span className="ml-2 text-green-600 text-sm">
+                                    (Réponse correcte)
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {question.explanation && (
+                          <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                            <p className="text-sm text-blue-700">
+                              <span className="font-medium">Explication:</span>{" "}
+                              {question.explanation}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setShowEvaluationDetails(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              >
+                Fermer
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

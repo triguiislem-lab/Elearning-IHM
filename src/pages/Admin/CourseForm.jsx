@@ -12,7 +12,8 @@ import { ref, set } from "firebase/database";
 // import { getAuth } from "firebase/auth"; // Replaced by useAuth
 import { useAuth } from "../../hooks/useAuth"; // Import useAuth
 import ModuleManagerCreation from "../../components/CourseModules/ModuleManagerCreation";
-import LoadingSpinner from "../../components/Common/LoadingSpinner"; // Import LoadingSpinner
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner"; // Import OptimizedLoadingSpinner
+import { auth } from "../../../firebaseConfig";
 
 // Fonction pour générer un ID unique sans dépendre de la bibliothèque uuid
 const generateUniqueId = () => {
@@ -53,140 +54,143 @@ const CourseForm = () => {
   // État pour suivre l'onglet actif
   const [activeTab, setActiveTab] = useState("info"); // "info" ou "modules"
 
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    specialty: "",
+    discipline: "",
+    level: "beginner",
+    duration: "",
+    price: "",
+    imageUrl: "",
+    objectives: "",
+    prerequisites: "",
+    targetAudience: "",
+    language: "fr",
+    status: "draft",
+    visibility: "public",
+    tags: [],
+    modules: [],
+  });
+
+  const { courseId } = useParams();
+
   useEffect(() => {
-    // Ensure user is authenticated and role is loaded before proceeding
-    if (authLoading) {
-      return; // Wait for auth state to resolve
-    }
-
-    // If no user or role, likely redirecting via ProtectedRoute, but handle defensively
-    if (!user || !role) {
-      setPermissionError("Authentification requise.");
-      setLoadingData(false);
-      // Optional: Redirect after a delay, but ProtectedRoute should handle this
-      // setTimeout(() => navigate('/login'), 1000);
-      return;
-    }
-
-    // Basic role check (Admin or Instructor)
-    const isAdmin = role === "admin";
-    const isInstructor = role === "instructor";
-
-    if (!isAdmin && !isInstructor) {
-      setPermissionError(
-        "Vous n'avez pas les permissions nécessaires pour accéder à cette page."
-      );
-      setLoadingData(false);
-      // Optional: Redirect or show message
-      // setTimeout(() => navigate(getDashboardPath(role)), 1000);
-      return;
-    }
-
-    // Now load course-specific data
-    const loadCourseData = async () => {
+    const loadData = async () => {
       try {
+        console.log("Début du chargement des données...");
         setLoadingData(true);
-        setPermissionError(""); // Clear previous errors
-        setError("");
+        setError(null);
 
-        // Fetch Specialites and Disciplines (needed for both create and edit)
-        const [specialitesData, disciplinesData] = await Promise.all([
-          fetchSpecialitesFromDatabase(),
-          fetchDisciplinesFromDatabase(),
-        ]);
+        // Vérifier l'authentification
+        const currentUser = auth.currentUser;
+        console.log("Utilisateur actuel:", currentUser);
+
+        if (!currentUser) {
+          setError("Vous devez être connecté pour accéder à cette page");
+          return;
+        }
+
+        // Charger les spécialités et disciplines
+        console.log("Chargement des spécialités...");
+        const specialitesData = await fetchSpecialitesFromDatabase();
+        console.log("Spécialités chargées:", specialitesData);
+
+        if (!specialitesData || specialitesData.length === 0) {
+          console.warn("Aucune spécialité trouvée");
+        } else {
+          console.log("Nombre de spécialités:", specialitesData.length);
+          console.log("Première spécialité:", specialitesData[0]);
+        }
+
         setSpecialites(specialitesData);
+
+        console.log("Chargement des disciplines...");
+        const disciplinesData = await fetchDisciplinesFromDatabase();
+        console.log("Disciplines chargées:", disciplinesData);
+
+        if (!disciplinesData || disciplinesData.length === 0) {
+          console.warn("Aucune discipline trouvée");
+        } else {
+          console.log("Nombre de disciplines:", disciplinesData.length);
+          console.log("Première discipline:", disciplinesData[0]);
+        }
+
         setDisciplines(disciplinesData);
 
-        // If Edit Mode: Fetch course data and perform specific permission check
-        if (isEditMode) {
-          const course = await fetchCourseById(courseIdParam);
-          if (course) {
-            // Edit Permission Check: Must be Admin OR the course's instructor
-            if (course.instructorId !== user.uid && !isAdmin) {
-              setPermissionError(
-                "Vous n'avez pas les permissions pour modifier ce cours."
-              );
-              setLoadingData(false);
-              return; // Stop loading if no permission
-            }
+        // Si on est en mode édition, charger les données du cours
+        if (courseId) {
+          console.log("Chargement du cours:", courseId);
+          const courseData = await fetchCourseById(courseId);
+          console.log("Données du cours chargées:", courseData);
 
-            // Set form data from fetched course
-            setCourseData({
-              title: course.title || course.titre || "",
-              description: course.description || "",
-              image: course.image || "",
-              level: course.level || "Débutant",
-              duration: course.duration || course.duree || "",
-              price: course.price || 0,
-              specialiteId: course.specialiteId || "",
-              disciplineId: course.disciplineId || "",
-              instructorId: course.instructorId || user.uid, // Ensure instructorId is set
+          if (courseData) {
+            setCourseData(courseData);
+            setFormData({
+              title: courseData.title || "",
+              description: courseData.description || "",
+              specialty: courseData.specialty || "",
+              discipline: courseData.discipline || "",
+              level: courseData.level || "beginner",
+              duration: courseData.duration || "",
+              price: courseData.price || "",
+              imageUrl: courseData.imageUrl || "",
+              objectives: courseData.objectives || "",
+              prerequisites: courseData.prerequisites || "",
+              targetAudience: courseData.targetAudience || "",
+              language: courseData.language || "fr",
+              status: courseData.status || "draft",
+              visibility: courseData.visibility || "public",
+              tags: courseData.tags || [],
+              modules: courseData.modules || [],
             });
-
-            // Filter disciplines based on fetched speciality
-            if (course.specialiteId) {
-              const filtered = disciplinesData.filter(
-                (discipline) => discipline.specialiteId === course.specialiteId
-              );
-              setFilteredDisciplines(filtered);
-            }
-
-            // Load modules if they exist
-            if (course.modules) {
-              const modulesArray = Object.entries(course.modules).map(
-                ([moduleId, moduleData]) => ({
-                  ...moduleData,
-                  id: moduleId,
-                  evaluations: moduleData.evaluations || {},
-                })
-              );
-              const sortedModules = modulesArray.sort(
-                (a, b) => (a.order || 0) - (b.order || 0)
-              );
-              setCourseModules(sortedModules);
-            }
           } else {
-            setError("Cours non trouvé.");
+            setError("Cours non trouvé");
           }
-        } else {
-          // Create Mode: Set current user as default instructor
-          setCourseData((prev) => ({
-            ...prev,
-            instructorId: user.uid,
-          }));
         }
-      } catch (err) {
-        
-        setError("Erreur lors du chargement des données du cours.");
+      } catch (error) {
+        console.error("Erreur lors du chargement des données:", error);
+        setError("Erreur lors du chargement des données: " + error.message);
       } finally {
         setLoadingData(false);
       }
     };
 
-    loadCourseData();
-  }, [courseIdParam, isEditMode, user, role, authLoading, navigate]); // Add dependencies
+    loadData();
+  }, [courseId]);
 
-  // Effect to filter disciplines when speciality changes (remains the same)
+  // Effet pour filtrer les disciplines
   useEffect(() => {
     if (courseData.specialiteId) {
+      console.log(
+        "Filtrage des disciplines pour la spécialité:",
+        courseData.specialiteId
+      );
       const filtered = disciplines.filter(
         (discipline) => discipline.specialiteId === courseData.specialiteId
       );
+      console.log("Disciplines filtrées:", filtered);
       setFilteredDisciplines(filtered);
+
       if (
         courseData.disciplineId &&
         !filtered.some((d) => d.id === courseData.disciplineId)
       ) {
+        console.log("Réinitialisation de la discipline sélectionnée");
         setCourseData((prev) => ({ ...prev, disciplineId: "" }));
       }
     } else {
+      console.log(
+        "Aucune spécialité sélectionnée, réinitialisation des disciplines"
+      );
       setFilteredDisciplines([]);
       setCourseData((prev) => ({ ...prev, disciplineId: "" }));
     }
-  }, [courseData.specialiteId, courseData.disciplineId, disciplines]);
+  }, [courseData.specialiteId, disciplines, courseData.disciplineId]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    console.log("Changement de valeur:", name, value);
     setCourseData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -294,7 +298,6 @@ const CourseForm = () => {
         navigate(`/courses/${courseId}`); // Redirect to course page
       }, 1500);
     } catch (err) {
-      
       setError(`Erreur lors de la sauvegarde: ${err.message}`);
     } finally {
       setSaving(false);
@@ -303,7 +306,7 @@ const CourseForm = () => {
 
   // Render Loading Spinner if auth is loading or initial data is loading
   if (authLoading || loadingData) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   // Render Permission Error message if exists
@@ -502,7 +505,7 @@ const CourseForm = () => {
                 htmlFor="specialiteId"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Spécialité
+                Spécialité *
               </label>
               <select
                 id="specialiteId"
@@ -513,11 +516,17 @@ const CourseForm = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white"
               >
                 <option value="">-- Sélectionnez une spécialité --</option>
-                {specialites.map((spec) => (
-                  <option key={spec.id} value={spec.id}>
-                    {spec.name}
+                {specialites && specialites.length > 0 ? (
+                  specialites.map((spec) => (
+                    <option key={spec.id} value={spec.id}>
+                      {spec.description || spec.id}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Aucune spécialité disponible
                   </option>
-                ))}
+                )}
               </select>
             </div>
             <div>
@@ -525,7 +534,7 @@ const CourseForm = () => {
                 htmlFor="disciplineId"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Discipline
+                Discipline *
               </label>
               <select
                 id="disciplineId"
@@ -541,13 +550,19 @@ const CourseForm = () => {
                 <option value="">
                   {courseData.specialiteId
                     ? "-- Sélectionnez une discipline --"
-                    : "-- Sélectionnez d&apos;abord une spécialité --"}
+                    : "-- Sélectionnez d'abord une spécialité --"}
                 </option>
-                {filteredDisciplines.map((disc) => (
-                  <option key={disc.id} value={disc.id}>
-                    {disc.name}
+                {filteredDisciplines && filteredDisciplines.length > 0 ? (
+                  filteredDisciplines.map((disc) => (
+                    <option key={disc.id} value={disc.id}>
+                      {disc.name || disc.id}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Aucune discipline disponible
                   </option>
-                ))}
+                )}
               </select>
               {!courseData.specialiteId && (
                 <p className="text-xs text-gray-500 mt-1">

@@ -19,7 +19,7 @@ import {
   MdAddCircle,
 } from "react-icons/md";
 import { Link } from "react-router-dom";
-import LoadingSpinner from "../../components/Common/LoadingSpinner";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const AdminDashboard = () => {
   const { user, role, loading: authLoading } = useAuth();
@@ -71,7 +71,6 @@ const AdminDashboard = () => {
               disciplineName: discipline?.name || "",
             };
           } catch (error) {
-            
             return {
               ...course,
               students: 0,
@@ -99,7 +98,6 @@ const AdminDashboard = () => {
       const instructorsList = allUsers.filter((u) => u.role === "instructor");
       setInstructors(instructorsList);
     } catch (err) {
-      
       setError("Une erreur s'est produite lors du chargement des données.");
     } finally {
       setLoadingData(false);
@@ -113,7 +111,7 @@ const AdminDashboard = () => {
   const isLoading = authLoading || loadingData;
 
   if (isLoading) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   if (error) {

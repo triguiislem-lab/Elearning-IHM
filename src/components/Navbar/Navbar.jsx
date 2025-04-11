@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { NavbarMenu } from "../../mockData/data.js";
 import {
   MdComputer,
@@ -17,85 +17,15 @@ import { getAvatarUrl } from "../../utils/avatarUtils";
 import { motion } from "framer-motion";
 import ResponsiveMenu from "./ResponsiveMenu.jsx";
 import { Link, useNavigate } from "react-router-dom";
-import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
-import { getDatabase, ref, get } from "firebase/database";
-import { fetchCompleteUserInfo } from "../../utils/firebaseUtils";
+import { getAuth, signOut } from "firebase/auth";
+import { useAuth } from "../../hooks/useAuth";
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState(null);
-  const [userType, setUserType] = useState(null);
-  const [userInfo, setUserInfo] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const navigate = useNavigate();
   const auth = getAuth();
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          // Fetch user type from database (new structure)
-          const db = getDatabase();
-          const userRef = ref(db, `elearning/users/${currentUser.uid}`);
-          const snapshot = await get(userRef);
-
-          if (snapshot.exists()) {
-            const userData = snapshot.val();
-            setUserType(userData.role || "student");
-            setUserInfo(userData);
-            
-          } else {
-            // Try legacy path
-            const legacyUserRef = ref(db, `users/${currentUser.uid}`);
-            const legacySnapshot = await get(legacyUserRef);
-
-            if (legacySnapshot.exists()) {
-              const legacyUserData = legacySnapshot.val();
-              // Map old userType to new role format
-              const role =
-                legacyUserData.userType === "admin"
-                  ? "admin"
-                  : legacyUserData.userType === "instructor" ||
-                    legacyUserData.userType === "formateur"
-                  ? "instructor"
-                  : "student";
-              setUserType(role);
-
-              // Fetch complete user info as fallback
-              const completeInfo = await fetchCompleteUserInfo(currentUser.uid);
-              setUserInfo(completeInfo);
-              
-            } else {
-              // Default to student if no user data found
-              setUserType("student");
-              setUserInfo({
-                id: currentUser.uid,
-                email: currentUser.email,
-                displayName: currentUser.displayName || "Utilisateur",
-                role: "student",
-              });
-            }
-          }
-        } catch (error) {
-          
-          // Default values in case of error
-          setUserType("student");
-          setUserInfo({
-            id: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName || "Utilisateur",
-            role: "student",
-          });
-        }
-      } else {
-        setUserType(null);
-        setUserInfo(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
+  const { user, userRole, isAuthenticated } = useAuth();
 
   const toggleUserMenu = () => {
     setUserMenuOpen(!userMenuOpen);
@@ -107,7 +37,7 @@ const Navbar = () => {
       setUserMenuOpen(false);
       navigate("/");
     } catch (error) {
-      
+      console.error("Error signing out:", error);
     }
   };
 
@@ -142,12 +72,12 @@ const Navbar = () => {
           </div>
           {/* CTA Button section */}
           <div className="hidden lg:flex items-center space-x-6">
-            {user ? (
+            {isAuthenticated ? (
               <div className="relative">
                 <div className="flex items-center space-x-4">
-                  {userType && (
+                  {userRole && (
                     <Link
-                      to={`/dashboard/${userType.toLowerCase()}`}
+                      to={`/${userRole.toLowerCase()}/dashboard`}
                       className="font-semibold hover:text-secondary transition-colors duration-300"
                     >
                       Tableau de bord
@@ -160,13 +90,13 @@ const Navbar = () => {
                     <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-secondary">
                       <img
                         src={
-                          userInfo
-                            ? getAvatarUrl(userInfo)
+                          user
+                            ? getAvatarUrl(user)
                             : "https://ui-avatars.com/api/?name=U&background=0D8ABC&color=fff&size=256"
                         }
                         alt={
-                          userInfo
-                            ? `${userInfo.prenom || ""} ${userInfo.nom || ""}`
+                          user
+                            ? `${user.firstName || ""} ${user.lastName || ""}`
                             : "User avatar"
                         }
                         className="w-full h-full object-cover"
@@ -177,8 +107,8 @@ const Navbar = () => {
                       />
                     </div>
                     <span className="font-medium">
-                      {userInfo
-                        ? `${userInfo.prenom || ""} ${userInfo.nom || ""}`
+                      {user
+                        ? `${user.firstName || ""} ${user.lastName || ""}`
                         : "Utilisateur"}
                     </span>
                   </button>
@@ -196,7 +126,7 @@ const Navbar = () => {
                       Mon profil
                     </Link>
                     {/* Lien vers les cours selon le rôle */}
-                    {userType === "student" && (
+                    {userRole === "student" && (
                       <Link
                         to="/student/enrollments"
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -206,7 +136,7 @@ const Navbar = () => {
                         Mes formations
                       </Link>
                     )}
-                    {userType === "instructor" && (
+                    {userRole === "instructor" && (
                       <Link
                         to="/instructor/courses"
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -216,7 +146,7 @@ const Navbar = () => {
                         Mes cours
                       </Link>
                     )}
-                    {userType === "admin" && (
+                    {userRole === "admin" && (
                       <Link
                         to="/admin/courses"
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -227,15 +157,9 @@ const Navbar = () => {
                       </Link>
                     )}
                     {/* Tableau de bord spécifique au rôle */}
-                    {userType && (
+                    {userRole && (
                       <Link
-                        to={
-                          userType === "admin"
-                            ? "/admin/dashboard"
-                            : userType === "instructor"
-                            ? "/instructor/dashboard"
-                            : "/student/dashboard"
-                        }
+                        to={`/${userRole.toLowerCase()}/dashboard`}
                         className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                         onClick={() => setUserMenuOpen(false)}
                       >
@@ -249,9 +173,9 @@ const Navbar = () => {
                       onClick={() => setUserMenuOpen(false)}
                     >
                       <MdMessage className="mr-2 h-5 w-5" />
-                      {userType === "admin"
+                      {userRole === "admin"
                         ? "Messages"
-                        : userType === "instructor"
+                        : userRole === "instructor"
                         ? "Messages des étudiants"
                         : "Contacter les formateurs"}
                     </Link>
@@ -293,8 +217,8 @@ const Navbar = () => {
       <ResponsiveMenu
         isOpen={isOpen}
         user={user}
-        userType={userType}
-        userInfo={userInfo}
+        userRole={userRole}
+        isAuthenticated={isAuthenticated}
         handleLogout={handleLogout}
       />
     </>

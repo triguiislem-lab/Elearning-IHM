@@ -4,7 +4,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { getUserOverallProgress } from "../../utils/progressUtils";
 import { MdSchool, MdAssignment, MdBarChart } from "react-icons/md";
 import { Link } from "react-router-dom";
-import LoadingSpinner from "../../components/Common/LoadingSpinner";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const StudentDashboard = () => {
   const { user, loading: authLoading, error: authError } = useAuth();
@@ -20,7 +20,6 @@ const StudentDashboard = () => {
         const progressData = await getUserOverallProgress(userId);
         setProgress(progressData);
       } catch (error) {
-        
         setProgressError(
           "Une erreur s&apos;est produite lors du chargement de la progression."
         );
@@ -37,7 +36,7 @@ const StudentDashboard = () => {
   }, [user, authLoading]);
 
   if (authLoading) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   if (authError) {
@@ -59,7 +58,7 @@ const StudentDashboard = () => {
   }
 
   if (progressLoading) {
-    return <LoadingSpinner />;
+    return <OptimizedLoadingSpinner />;
   }
 
   if (progressError) {

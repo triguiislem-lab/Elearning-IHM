@@ -1,8 +1,13 @@
 import React from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
-import LoadingSpinner from "./components/Common/LoadingSpinner";
+import LoadingSpinner from "./components/Common/OptimizedLoadingSpinner";
 import Navbar from "./components/Navbar/Navbar";
 import HomePage from "./pages/HomePage";
 import CoursesPage from "./pages/CoursesPage";
@@ -15,7 +20,6 @@ import Profile from "./pages/Profile/Profile";
 import MyCourses from "./pages/Profile/MyCourses";
 import EditProfile from "./pages/Profile/EditProfile";
 import StudentDashboard from "./pages/Dashboard/StudentDashboard";
-import InstructorDashboard from "./pages/Dashboard/InstructorDashboard";
 import AdminDashboard from "./pages/Dashboard/AdminDashboard";
 import DatabaseCleanup from "./pages/Admin/DatabaseCleanup";
 import DatabaseMigration from "./pages/Admin/DatabaseMigration";
@@ -25,26 +29,27 @@ import InstructorCourseForm from "./pages/Instructor/CourseForm";
 import InstructorCourses from "./pages/Instructor/MyCourses";
 import InstructorCourseManagement from "./pages/Instructor/InstructorCourseManagement";
 import MessagesPage from "./pages/Messages/MessagesPage";
+import NotFound from "./pages/NotFound";
 
-// Composants de redirection
+// Redirect components
 import ProfileRedirect from "./components/Redirects/ProfileRedirect";
 import EditProfileRedirect from "./components/Redirects/EditProfileRedirect";
 import MessagesRedirect from "./components/Redirects/MessagesRedirect";
 
 const App = () => {
-  const { loading, getDashboardPath } = useAuth();
+  const { loading, userRole, getDashboardPath } = useAuth();
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
   return (
-    <BrowserRouter>
+    <Router>
       <div className="flex flex-col min-h-screen">
         <Navbar />
         <main className="flex-grow">
           <Routes>
-            {/* Routes publiques */}
+            {/* Public routes */}
             <Route path="/" element={<HomePage />} />
             <Route path="/courses" element={<CoursesPage />} />
             <Route path="/course/:id" element={<CourseDetails />} />
@@ -55,7 +60,7 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
 
-            {/* Routes de redirection selon le rôle */}
+            {/* Role-based redirects */}
             <Route
               path="/profile"
               element={
@@ -81,8 +86,7 @@ const App = () => {
               }
             />
 
-            {/* Routes protégées par rôle */}
-            {/* Routes pour les étudiants */}
+            {/* Student routes */}
             <Route
               path="/student/*"
               element={
@@ -91,8 +95,7 @@ const App = () => {
                     <Route path="dashboard" element={<StudentDashboard />} />
                     <Route path="profile" element={<Profile />} />
                     <Route path="enrollments" element={<MyCourses />} />
-                    <Route path="my-courses" element={<MyCourses />} />{" "}
-                    {/* Pour compatibilité */}
+                    <Route path="my-courses" element={<MyCourses />} />
                     <Route path="edit-profile" element={<EditProfile />} />
                     <Route path="messages" element={<MessagesPage />} />
                   </Routes>
@@ -100,13 +103,16 @@ const App = () => {
               }
             />
 
-            {/* Routes pour les instructeurs */}
+            {/* Instructor routes */}
             <Route
               path="/instructor/*"
               element={
                 <ProtectedRoute allowedRoles={["instructor"]}>
                   <Routes>
-                    <Route path="dashboard" element={<InstructorDashboard />} />
+                    <Route
+                      path="dashboard"
+                      element={<Navigate to="/instructor/courses" replace />}
+                    />
                     <Route path="courses" element={<InstructorCourses />} />
                     <Route
                       path="course-management/:id"
@@ -128,17 +134,16 @@ const App = () => {
               }
             />
 
-            {/* Routes pour les administrateurs */}
+            {/* Admin routes */}
             <Route
               path="/admin/*"
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <Routes>
                     <Route path="dashboard" element={<AdminDashboard />} />
-                    <Route path="users" element={<AdminDashboard />} />{" "}
-                    {/* À remplacer par UsersManagement */}
-                    <Route path="courses" element={<AdminDashboard />} />{" "}
-                    {/* À remplacer par CoursesManagement */}
+                    <Route path="profile" element={<Profile />} />
+                    <Route path="edit-profile" element={<EditProfile />} />
+                    <Route path="messages" element={<MessagesPage />} />
                     <Route
                       path="database-cleanup"
                       element={<DatabaseCleanup />}
@@ -156,21 +161,18 @@ const App = () => {
                       path="course-form/:id"
                       element={<AdminCourseForm />}
                     />
-                    <Route path="messages" element={<MessagesPage />} />
-                    <Route path="profile" element={<Profile />} />
-                    <Route path="edit-profile" element={<EditProfile />} />
                   </Routes>
                 </ProtectedRoute>
               }
             />
 
-            {/* Redirection par défaut */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+            {/* 404 route */}
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </main>
         <Footer />
       </div>
-    </BrowserRouter>
+    </Router>
   );
 };
 

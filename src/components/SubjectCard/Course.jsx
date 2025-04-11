@@ -3,6 +3,7 @@ import { Clock, Star, Library, Users, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { fetchCoursesFromDatabase } from "../../utils/firebaseUtils";
+import OptimizedLoadingSpinner from "../Common/OptimizedLoadingSpinner";
 
 const Course = ({ course, index }) => {
   // Définir des valeurs par défaut pour les propriétés manquantes
@@ -34,7 +35,6 @@ const Course = ({ course, index }) => {
           alt={course.titre || course.title}
           className="w-full h-56 object-cover"
           onError={(e) => {
-            
             e.target.src =
               "https://images.unsplash.com/photo-1498050108023-c5249f4df085?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80";
           }}
@@ -103,7 +103,6 @@ export const Courses = () => {
         const coursesData = await fetchCoursesFromDatabase();
         setCourses(coursesData);
       } catch (error) {
-        
       } finally {
         setLoading(false);
       }
@@ -115,7 +114,7 @@ export const Courses = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+        <OptimizedLoadingSpinner size="large" text="Chargement des cours..." />
       </div>
     );
   }

@@ -27,9 +27,10 @@ export const addModuleToCourse = async (courseId, moduleData) => {
     }
 
     // Préparer les données du module
+    const moduleId = Date.now().toString(); // Générer un ID unique
     const newModule = {
       ...moduleData,
-      id: Date.now().toString(), // Générer un ID unique
+      id: moduleId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: 'active',
@@ -52,10 +53,21 @@ export const addModuleToCourse = async (courseId, moduleData) => {
 
     // Mettre à jour le cours avec le nouveau module
     await update(courseRef, { modules });
+    console.log(`Module ${moduleId} added to course ${courseId}`);
+
+    // Initialiser la structure d'évaluation pour ce module
+    const evaluationsRef = ref(database, `elearning/evaluations/${moduleId}`);
+    await set(evaluationsRef, {
+      moduleId,
+      courseId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+    console.log(`Evaluation structure initialized for module ${moduleId}`);
 
     return newModule;
   } catch (error) {
-    
+    console.error("Error adding module to course:", error);
     throw error;
   }
 };
@@ -112,7 +124,7 @@ export const updateModule = async (courseId, moduleId, moduleData) => {
 
     return modules[moduleIndex];
   } catch (error) {
-    
+
     throw error;
   }
 };
@@ -162,7 +174,7 @@ export const deleteModule = async (courseId, moduleId) => {
 
     return true;
   } catch (error) {
-    
+
     throw error;
   }
 };
@@ -208,9 +220,12 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
     }
 
     // Préparer les données de l'évaluation
+    const evalId = Date.now().toString(); // Générer un ID unique
     const newEvaluation = {
       ...evaluationData,
-      id: Date.now().toString(), // Générer un ID unique
+      id: evalId,
+      moduleId,
+      courseId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -224,10 +239,16 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
 
     // Mettre à jour le cours avec le module modifié
     await update(courseRef, { modules });
+    console.log(`Evaluation ${evalId} added to module ${moduleId} in course ${courseId}`);
+
+    // Ajouter l'évaluation dans le chemin standardisé
+    const evaluationRef = ref(database, `elearning/evaluations/${moduleId}/${evalId}`);
+    await set(evaluationRef, newEvaluation);
+    console.log(`Evaluation ${evalId} saved to standardized path`);
 
     return newEvaluation;
   } catch (error) {
-    
+    console.error("Error adding evaluation to module:", error);
     throw error;
   }
 };
@@ -296,7 +317,7 @@ export const updateEvaluation = async (courseId, moduleId, evaluationId, evaluat
 
     return modules[moduleIndex].evaluations[evaluationIndex];
   } catch (error) {
-    
+
     throw error;
   }
 };
@@ -361,7 +382,7 @@ export const deleteEvaluation = async (courseId, moduleId, evaluationId) => {
 
     return true;
   } catch (error) {
-    
+
     throw error;
   }
 };
@@ -369,71 +390,133 @@ export const deleteEvaluation = async (courseId, moduleId, evaluationId) => {
 // Récupérer les cours d'un formateur avec mise en cache
 export const fetchInstructorCourses = async (instructorId) => {
   try {
-    // Vérifier si les données sont en cache
-    const cacheKey = `instructor_courses_${instructorId}`;
-    const cachedData = getCachedData(cacheKey);
-
-    if (cachedData) {
-      
-      return cachedData;
-    }
-
+    console.log("Début de fetchInstructorCourses pour l'instructeur:", instructorId);
     
-    const coursesRef = ref(database, 'elearning/courses');
-    const snapshot = await get(coursesRef);
+    // Récupérer les spécialités et disciplines en utilisant les fonctions qui gèrent les chemins legacy
+    const [specialites, disciplines] = await Promise.all([
+      fetchSpecialitesFromDatabase(),
+      fetchDisciplinesFromDatabase()
+    ]);
 
-    if (!snapshot.exists()) {
-      
-      return [];
-    }
+    console.log("Spécialités récupérées:", specialites);
+    console.log("Disciplines récupérées:", disciplines);
+    
+    // Vérifier d'abord dans le chemin des utilisateurs
+    const instructorCoursesRef = ref(database, `elearning/users/${instructorId}/courses`);
+    const snapshot = await get(instructorCoursesRef);
 
-    const allCourses = snapshot.val();
-    const instructorCourses = [];
+    if (snapshot.exists()) {
+      console.log("Cours trouvés dans le chemin des utilisateurs");
+      const coursesData = snapshot.val();
+      const coursesWithDetails = [];
 
-    // Préparer les promesses pour les requêtes d'inscriptions
-    const enrollmentPromises = [];
-    const courseEntries = [];
+      // Récupérer les détails complets de chaque cours
+      for (const courseId in coursesData) {
+        try {
+          const courseDetails = await fetchCourseById(courseId);
+          const enrollments = await fetchCourseEnrollments(courseId);
 
-    // Parcourir tous les cours et filtrer ceux du formateur
-    for (const courseId in allCourses) {
-      const course = allCourses[courseId];
-      if (course.formateur === instructorId || course.instructorId === instructorId) {
-        courseEntries.push({ courseId, course });
+          console.log("Détails du cours:", courseDetails);
+          console.log("ID de la spécialité:", courseDetails.specialiteId);
+          console.log("ID de la discipline:", courseDetails.disciplineId);
 
-        // Préparer la promesse pour récupérer les inscriptions
-        const enrollmentsRef = ref(database, `elearning/enrollments/byCourse/${courseId}`);
-        enrollmentPromises.push(get(enrollmentsRef));
+          // Trouver la spécialité et la discipline correspondantes
+          const specialite = specialites.find(s => s.id === courseDetails.specialiteId);
+          const discipline = disciplines.find(d => d.id === courseDetails.disciplineId);
+
+          console.log("Spécialité trouvée:", specialite);
+          console.log("Discipline trouvée:", discipline);
+
+          coursesWithDetails.push({
+            ...courseDetails,
+            students: enrollments.length,
+            enrollments: enrollments,
+            specialiteName: specialite?.name || "Non spécifié",
+            disciplineName: discipline?.name || "Non spécifié"
+          });
+        } catch (error) {
+          console.error(`Erreur lors de la récupération des détails du cours ${courseId}:`, error);
+          coursesWithDetails.push({
+            id: courseId,
+            title: coursesData[courseId].title || "Cours sans titre",
+            students: 0,
+            enrollments: [],
+            specialiteName: "Non spécifié",
+            disciplineName: "Non spécifié"
+          });
+        }
       }
-    }
 
-    // Exécuter toutes les requêtes d'inscriptions en parallèle
-    const enrollmentResults = await Promise.all(enrollmentPromises);
-
-    // Traiter les résultats
-    courseEntries.forEach(({ courseId, course }, index) => {
-      let studentCount = 0;
-
-      // Récupérer le nombre d'étudiants
-      const enrollmentSnapshot = enrollmentResults[index];
-      if (enrollmentSnapshot && enrollmentSnapshot.exists()) {
-        const enrollments = enrollmentSnapshot.val();
-        studentCount = Object.keys(enrollments).length;
-      }
-
-      // Ajouter le cours avec le nombre d'étudiants
-      instructorCourses.push({
-        id: courseId,
-        ...course,
-        students: studentCount
+      // Trier les cours par date de création (du plus récent au plus ancien)
+      const sortedCourses = coursesWithDetails.sort((a, b) => {
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       });
-    });
 
-    // Mettre en cache les résultats
-    setCachedData(cacheKey, instructorCourses);
+      console.log(`Retour de ${sortedCourses.length} cours pour l'instructeur ${instructorId}`);
+      return sortedCourses;
+    }
 
-    return instructorCourses;
+    // Si aucun cours n'est trouvé dans le chemin des utilisateurs, vérifier dans le chemin principal
+    console.log("Aucun cours trouvé dans le chemin des utilisateurs, vérification dans le chemin principal");
+    const allCoursesRef = ref(database, 'elearning/courses');
+    const allCoursesSnapshot = await get(allCoursesRef);
+
+    if (allCoursesSnapshot.exists()) {
+      const allCourses = allCoursesSnapshot.val();
+      const instructorCourses = [];
+
+      for (const courseId in allCourses) {
+        const course = allCourses[courseId];
+        if (course.formateur === instructorId || course.instructorId === instructorId) {
+          try {
+            const enrollments = await fetchCourseEnrollments(courseId);
+            
+            console.log("Détails du cours:", course);
+            console.log("ID de la spécialité:", course.specialiteId);
+            console.log("ID de la discipline:", course.disciplineId);
+
+            // Trouver la spécialité et la discipline correspondantes
+            const specialite = specialites.find(s => s.id === course.specialiteId);
+            const discipline = disciplines.find(d => d.id === course.disciplineId);
+
+            console.log("Spécialité trouvée:", specialite);
+            console.log("Discipline trouvée:", discipline);
+
+            instructorCourses.push({
+              id: courseId,
+              ...course,
+              students: enrollments.length,
+              enrollments: enrollments,
+              specialiteName: specialite?.name || "Non spécifié",
+              disciplineName: discipline?.name || "Non spécifié"
+            });
+          } catch (error) {
+            console.error(`Erreur lors de la récupération des inscriptions du cours ${courseId}:`, error);
+            instructorCourses.push({
+              id: courseId,
+              ...course,
+              students: 0,
+              enrollments: [],
+              specialiteName: "Non spécifié",
+              disciplineName: "Non spécifié"
+            });
+          }
+        }
+      }
+
+      // Trier les cours par date de création
+      const sortedCourses = instructorCourses.sort((a, b) => {
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+      console.log(`Retour de ${sortedCourses.length} cours pour l'instructeur ${instructorId}`);
+      return sortedCourses;
+    }
+
+    console.log("Aucun cours trouvé pour l'instructeur");
+    return [];
   } catch (error) {
-    
+    console.error("Erreur lors de la récupération des cours de l'instructeur:", error);
     return [];
   }
 };
@@ -497,7 +580,7 @@ export const addResourceToModule = async (courseId, moduleId, resourceData) => {
 
     return newResource;
   } catch (error) {
-    
+
     throw error;
   }
 };
@@ -562,7 +645,7 @@ export const deleteResource = async (courseId, moduleId, resourceId) => {
 
     return true;
   } catch (error) {
-    
+
     throw error;
   }
 };

@@ -9,58 +9,72 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fonction pour récupérer les informations de l'utilisateur avec mise en cache
+  // Function to normalize user role
+  const normalizeRole = (userData) => {
+    if (!userData) return null;
+    
+    if (userData.role) {
+      return userData.role.toLowerCase();
+    }
+    if (userData.userType) {
+      const roleMap = {
+        'formateur': 'instructor',
+        'administrateur': 'admin',
+        'etudiant': 'student',
+        'instructor': 'instructor',
+        'admin': 'admin',
+        'student': 'student'
+      };
+      return roleMap[userData.userType.toLowerCase()] || null;
+    }
+    return null;
+  };
+
+  // Function to fetch user info with improved error handling
   const fetchUserInfo = useCallback(async (firebaseUser) => {
+    if (!firebaseUser) {
+      setUser(null);
+      setUserRole(null);
+      return;
+    }
+
     try {
-      // Vérifier si les données sont en cache
       const cacheKey = `user_info_${firebaseUser.uid}`;
       const cachedData = getCachedData(cacheKey);
 
-      if (cachedData) {
-        
+      if (cachedData && cachedData.normalizedRole) {
         setUser(cachedData);
-        setUserRole(cachedData.normalizedRole || 'student');
+        setUserRole(cachedData.normalizedRole);
         return;
       }
 
-      // Récupérer les informations de l'utilisateur depuis la base de données
       const database = getDatabase();
       const userRef = ref(database, `elearning/users/${firebaseUser.uid}`);
       const snapshot = await get(userRef);
 
       if (snapshot.exists()) {
         const userData = snapshot.val();
+        const normalizedRole = normalizeRole(userData);
 
-        // Déterminer le rôle de l'utilisateur (plusieurs formats possibles)
-        let role = 'student';
-        if (userData.role) {
-          role = userData.role;
-        } else if (userData.userType) {
-          // Mapper userType vers role
-          if (userData.userType === 'formateur') {
-            role = 'instructor';
-          } else if (userData.userType === 'administrateur') {
-            role = 'admin';
-          } else if (userData.userType === 'etudiant') {
-            role = 'student';
-          }
+        if (!normalizedRole) {
+          throw new Error('Invalid user role');
         }
 
         const userInfo = {
           ...firebaseUser,
           ...userData,
-          normalizedRole: role // Ajouter un champ normalisé pour le rôle
+          normalizedRole,
+          id: firebaseUser.uid
         };
 
-        // Mettre en cache les informations de l'utilisateur
         setCachedData(cacheKey, userInfo);
-
         setUser(userInfo);
-        setUserRole(role);
+        setUserRole(normalizedRole);
       } else {
-        // Créer un profil par défaut si l'utilisateur n'existe pas
+        // Create default user profile with proper role
         const defaultUser = {
           ...firebaseUser,
+          id: firebaseUser.uid,
           role: 'student',
           normalizedRole: 'student',
           firstName: '',
@@ -72,8 +86,10 @@ export const useAuth = () => {
         setUserRole('student');
       }
     } catch (error) {
+      console.error('Error fetching user info:', error);
       setError(error);
-      
+      setUser(null);
+      setUserRole(null);
     }
   }, []);
 
@@ -82,16 +98,12 @@ export const useAuth = () => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         setLoading(true);
-
-        if (firebaseUser) {
-          await fetchUserInfo(firebaseUser);
-        } else {
-          setUser(null);
-          setUserRole(null);
-        }
+        await fetchUserInfo(firebaseUser);
       } catch (error) {
-        
+        console.error('Auth state change error:', error);
         setError(error);
+        setUser(null);
+        setUserRole(null);
       } finally {
         setLoading(false);
       }
@@ -100,19 +112,11 @@ export const useAuth = () => {
     return () => unsubscribe();
   }, [fetchUserInfo]);
 
-  const getDashboardPath = () => {
+  const getDashboardPath = useCallback(() => {
     if (!userRole) return '/login';
-    switch (userRole.toLowerCase()) {
-      case 'admin':
-        return '/admin/dashboard';
-      case 'instructor':
-        return '/instructor/dashboard';
-      case 'student':
-        return '/student/dashboard';
-      default:
-        return '/';
-    }
-  };
+    if (userRole === 'instructor') return '/instructor/courses';
+    return `/${userRole.toLowerCase()}/dashboard`;
+  }, [userRole]);
 
   return {
     user,
@@ -120,7 +124,7 @@ export const useAuth = () => {
     loading,
     error,
     getDashboardPath,
-    isAuthenticated: !!user,
+    isAuthenticated: !!user && !!userRole,
     isAdmin: userRole === 'admin',
     isInstructor: userRole === 'instructor',
     isStudent: userRole === 'student'

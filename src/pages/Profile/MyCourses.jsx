@@ -7,7 +7,7 @@ import {
   calculateCourseScore,
   calculateCourseProgress,
   isCourseCompleted,
-  fetchEnrollmentsByUser,
+  fetchUserEnrollments,
 } from "../../utils/firebaseUtils";
 import { Link } from "react-router-dom";
 import {
@@ -17,6 +17,7 @@ import {
   MdAccessTime,
 } from "react-icons/md";
 import CourseModules from "../../components/CourseModules/CourseModules";
+import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
 
 const MyCourses = () => {
   const [userInfo, setUserInfo] = useState(null);
@@ -28,44 +29,38 @@ const MyCourses = () => {
     const loadUserInfo = async () => {
       try {
         const user = auth.currentUser;
-        
 
         if (user) {
           // Récupérer les informations utilisateur depuis Firebase
           const info = await fetchCompleteUserInfo(user.uid);
-          
 
           // S'assurer que info n'est pas null avant de continuer
           if (info) {
             setUserInfo(info);
 
             // Récupérer les inscriptions de l'utilisateur directement
-            const directEnrollments = await fetchEnrollmentsByUser(user.uid);
-            
+            const directEnrollments = await fetchUserEnrollments(user.uid);
 
             // Utiliser les inscriptions récupérées directement ou celles de l'utilisateur
             const enrollments =
               directEnrollments.length > 0
                 ? directEnrollments
                 : info.enrollments || [];
-            
 
             if (enrollments.length > 0) {
               try {
                 // Récupérer les détails des cours
                 const coursePromises = enrollments.map(async (enrollment) => {
                   try {
-                    
                     const courseData = await fetchCourseById(
                       enrollment.courseId
                     );
-                    
+
                     return {
                       ...courseData,
                       enrolledAt: enrollment.enrolledAt,
                     };
                   } catch (courseError) {
-                    
                     // Retourner un objet de cours par défaut en cas d'erreur
                     return {
                       id: enrollment.courseId,
@@ -79,7 +74,6 @@ const MyCourses = () => {
                 });
 
                 const coursesData = await Promise.all(coursePromises);
-                
 
                 // Filtrer les cours null ou undefined et éliminer les doublons
                 const validCoursesData = coursesData.filter((course) => course);
@@ -94,19 +88,15 @@ const MyCourses = () => {
 
                 // Convertir la Map en tableau
                 const uniqueCoursesData = Array.from(uniqueCoursesMap.values());
-                
 
                 setCourses(uniqueCoursesData);
               } catch (coursesError) {
-                
                 setCourses([]);
               }
             } else {
-              
               setCourses([]);
             }
           } else {
-            
             setUserInfo({
               prenom: "Utilisateur",
               nom: "",
@@ -117,24 +107,18 @@ const MyCourses = () => {
             setCourses([]);
           }
         } else {
-          
           setUserInfo(null);
           setCourses([]);
         }
       } catch (error) {
-        
-
         // Afficher l'erreur complète pour le débogage
-        
 
         // Essayer de récupérer les inscriptions directement en cas d'erreur
         try {
           if (auth.currentUser) {
-            
-            const directEnrollments = await fetchEnrollmentsByUser(
+            const directEnrollments = await fetchUserEnrollments(
               auth.currentUser.uid
             );
-            
 
             if (directEnrollments && directEnrollments.length > 0) {
               // Récupérer les détails des cours
@@ -149,7 +133,6 @@ const MyCourses = () => {
                       enrolledAt: enrollment.enrolledAt,
                     };
                   } catch (courseError) {
-                    
                     return {
                       id: enrollment.courseId,
                       title: enrollment.courseName || "Cours",
@@ -163,7 +146,6 @@ const MyCourses = () => {
               );
 
               const coursesData = await Promise.all(coursePromises);
-              
 
               // Filtrer les cours null ou undefined
               const validCoursesData = coursesData.filter((course) => course);
@@ -185,7 +167,6 @@ const MyCourses = () => {
             setCourses([]);
           }
         } catch (fallbackError) {
-          
           // Créer un utilisateur par défaut en cas d'erreur
           if (auth.currentUser) {
             setUserInfo({
@@ -207,7 +188,6 @@ const MyCourses = () => {
 
     // Ajouter un écouteur d'événement pour les changements d'authentification
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      
       if (user) {
         loadUserInfo();
       } else {
@@ -224,7 +204,7 @@ const MyCourses = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+        <OptimizedLoadingSpinner size="large" text="Chargement en cours..." />
       </div>
     );
   }
@@ -326,7 +306,6 @@ const MyCourses = () => {
                               alt={course.title || course.titre}
                               className="w-full h-48 object-cover"
                               onError={(e) => {
-                                
                                 e.target.src =
                                   "https://images.unsplash.com/photo-1498050108023-c5249f4df085?ixlib=rb-1.2.1&auto=format&fit=crop&w=1200&q=80";
                               }}

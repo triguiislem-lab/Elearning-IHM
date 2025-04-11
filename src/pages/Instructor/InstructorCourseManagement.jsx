@@ -18,7 +18,6 @@ import {
   fetchCourseById,
   fetchCourseEnrollments,
 } from "../../utils/firebaseUtils";
-import LoadingSpinner from "../../components/Common/LoadingSpinner";
 
 const InstructorCourseManagement = () => {
   const { id: courseId } = useParams();
@@ -69,7 +68,6 @@ const InstructorCourseManagement = () => {
       const cachedData = getCachedData(cacheKey);
 
       if (cachedData) {
-        
         setCourse(cachedData);
         setLoadingData(false);
         return;
@@ -98,7 +96,6 @@ const InstructorCourseManagement = () => {
       setCourse(courseData);
       setEnrollments(courseEnrollments);
     } catch (err) {
-      
       setError(`Erreur lors du chargement des données: ${err.message}`);
     } finally {
       setLoadingData(false);
@@ -117,7 +114,6 @@ const InstructorCourseManagement = () => {
       setSuccess("Modules mis à jour avec succès");
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
-      
       setError(`Erreur lors de la mise à jour: ${err.message}`);
     } finally {
       setLoadingData(false);

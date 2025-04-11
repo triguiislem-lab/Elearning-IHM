@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import ReactPlayer from "react-player";
 import { Document, Page, pdfjs } from "react-pdf";
 import { MdArrowBack, MdArrowForward, MdFileDownload } from "react-icons/md";
+import OptimizedLoadingSpinner from "../Common/OptimizedLoadingSpinner";
 
 // Configuration pour react-pdf sera faite dans useEffect
 
@@ -122,10 +123,7 @@ const ModuleResource = ({ resource }) => {
               </div>
             ) : !pdfReady ? (
               <div className="flex justify-center p-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
-                <p className="ml-3 text-gray-600">
-                  Chargement du lecteur PDF...
-                </p>
+                <OptimizedLoadingSpinner size="medium" text="Chargement du lecteur PDF..." />
               </div>
             ) : (
               <div>
@@ -136,7 +134,7 @@ const ModuleResource = ({ resource }) => {
                     onLoadError={onDocumentLoadError}
                     loading={
                       <div className="flex justify-center p-8">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-secondary"></div>
+                        <OptimizedLoadingSpinner size="medium" text="Chargement du document..." />
                       </div>
                     }
                   >

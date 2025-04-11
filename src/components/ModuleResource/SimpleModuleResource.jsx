@@ -1,8 +1,14 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import ReactPlayer from "react-player";
-import { MdFileDownload, MdOpenInNew } from "react-icons/md";
+import { MdFileDownload, MdOpenInNew, MdError } from "react-icons/md";
 
 const SimpleModuleResource = ({ resource }) => {
+  const [resourceError, setResourceError] = useState(false);
+
+  useEffect(() => {
+    // Reset error state when resource changes
+    setResourceError(false);
+  }, [resource]);
   // Fonction pour déterminer le type de ressource
   const getResourceType = (url) => {
     if (!url) return "unknown";
@@ -37,10 +43,39 @@ const SimpleModuleResource = ({ resource }) => {
 
   // Rendu en fonction du type de ressource
   const renderResource = () => {
-    if (!resource || !resource.url) {
+    if (!resource) {
       return (
         <div className="bg-gray-100 p-8 rounded-lg text-center">
           <p className="text-gray-500">Aucune ressource disponible</p>
+        </div>
+      );
+    }
+
+    if (!resource.url) {
+      return (
+        <div className="bg-gray-100 p-8 rounded-lg text-center">
+          <div className="flex flex-col items-center justify-center gap-2">
+            <MdError className="text-yellow-500" size={32} />
+            <p className="text-gray-700">URL de ressource manquante</p>
+            <p className="text-gray-500 text-sm">
+              La ressource "{resource.title || "Sans titre"}" n'a pas d'URL
+              valide.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (resourceError) {
+      return (
+        <div className="bg-gray-100 p-8 rounded-lg text-center">
+          <div className="flex flex-col items-center justify-center gap-2">
+            <MdError className="text-red-500" size={32} />
+            <p className="text-gray-700">Erreur de chargement</p>
+            <p className="text-gray-500 text-sm">
+              Impossible de charger la ressource. Veuillez réessayer plus tard.
+            </p>
+          </div>
         </div>
       );
     }
@@ -63,6 +98,7 @@ const SimpleModuleResource = ({ resource }) => {
               }}
               onError={(e) => {
                 console.error("Video playback error:", e);
+                setResourceError(true);
               }}
             />
           </div>
@@ -104,9 +140,11 @@ const SimpleModuleResource = ({ resource }) => {
               alt={resource.title || "Image du cours"}
               className="max-w-full h-auto rounded-lg mx-auto"
               onError={(e) => {
+                console.error("Image load error:", e);
                 e.target.onerror = null;
                 e.target.src =
                   "https://via.placeholder.com/800x600?text=Image+non+disponible";
+                // Don't set resourceError here as we're providing a fallback image
               }}
             />
           </div>
