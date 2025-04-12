@@ -14,11 +14,14 @@ import {
   fetchCoursesFromDatabase,
   fetchSpecialitesFromDatabase,
   fetchDisciplinesFromDatabase,
+  fetchCourseEnrollments,
 } from "../utils/firebaseUtils";
 import OptimizedLoadingSpinner from "../components/Common/OptimizedLoadingSpinner";
+import { getDatabase, ref, get } from "firebase/database";
 
 const CoursesPage = () => {
   const [courses, setCourses] = useState([]);
+  const [coursesWithMetadata, setCoursesWithMetadata] = useState([]);
   const [specialites, setSpecialites] = useState([]);
   const [disciplines, setDisciplines] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,8 +35,118 @@ const CoursesPage = () => {
     const loadData = async () => {
       try {
         // Charger les cours
-        const coursesData = await fetchCoursesFromDatabase();
+        const coursesData = await fetchCoursesFromDatabase(true);
         setCourses(coursesData);
+
+        // Enrichir les cours avec des métadonnées (nombre d'étudiants, de leçons, etc.)
+        const database = getDatabase();
+        const coursesWithExtra = await Promise.all(
+          coursesData.map(async (course) => {
+            try {
+              // Récupérer le nombre d'inscriptions pour ce cours
+              const enrollments = await fetchCourseEnrollments(course.id);
+              const studentsCount = enrollments.length;
+
+              // Compter le nombre de leçons (modules)
+              let lessonsCount = 0;
+              if (course.modules && typeof course.modules === "object") {
+                // Si modules est un tableau
+                if (Array.isArray(course.modules)) {
+                  lessonsCount = course.modules.length;
+                }
+                // Si modules est un objet
+                else {
+                  lessonsCount = Object.keys(course.modules).length;
+                }
+              }
+
+              // Récupérer les données de feedback depuis Firebase
+              let rating = course.rating || 0;
+              let totalRatings = course.totalRatings || 0;
+
+              // Vérifier si les ratings ne sont pas déjà présents dans l'objet course
+              if (!course.rating || !course.totalRatings) {
+                // Essayer de récupérer les ratings depuis le chemin Elearning/Cours
+                const feedbackRef = ref(
+                  database,
+                  `Elearning/Cours/${course.id}`
+                );
+                const feedbackSnapshot = await get(feedbackRef);
+
+                if (feedbackSnapshot.exists()) {
+                  const courseData = feedbackSnapshot.val();
+                  rating = courseData.rating || 0;
+                  totalRatings = courseData.totalRatings || 0;
+                }
+
+                // Si toujours pas de ratings, essayer de récupérer depuis le chemin elearning/courses
+                if (rating === 0 && totalRatings === 0) {
+                  const altFeedbackRef = ref(
+                    database,
+                    `elearning/courses/${course.id}`
+                  );
+                  const altFeedbackSnapshot = await get(altFeedbackRef);
+
+                  if (altFeedbackSnapshot.exists()) {
+                    const altCourseData = altFeedbackSnapshot.val();
+                    rating = altCourseData.rating || 0;
+                    totalRatings = altCourseData.totalRatings || 0;
+                  }
+                }
+
+                // Si toujours pas de ratings, essayer de calculer depuis les feedbacks existants
+                if (rating === 0 && totalRatings === 0) {
+                  const feedbacksRef = ref(
+                    database,
+                    `Elearning/Feedback/${course.id}`
+                  );
+                  const feedbacksSnapshot = await get(feedbacksRef);
+
+                  if (feedbacksSnapshot.exists()) {
+                    const feedbacks = feedbacksSnapshot.val();
+                    const feedbacksList = Object.values(feedbacks);
+
+                    if (feedbacksList.length > 0) {
+                      const sum = feedbacksList.reduce(
+                        (acc, fb) => acc + (fb.rating || 0),
+                        0
+                      );
+                      rating = parseFloat(
+                        (sum / feedbacksList.length).toFixed(1)
+                      );
+                      totalRatings = feedbacksList.length;
+                    }
+                  }
+                }
+              }
+
+              // Calculer aussi un score de popularité pour un tri futur si nécessaire
+              const popularityScore = rating * 10 + studentsCount;
+
+              return {
+                ...course,
+                students: studentsCount,
+                lessons: lessonsCount,
+                rating: rating,
+                totalRatings: totalRatings,
+                popularityScore: popularityScore,
+                createdAt: course.createdAt || new Date().toISOString(),
+              };
+            } catch (error) {
+              console.error(
+                `Erreur lors de la récupération des métadonnées pour le cours ${course.id}:`,
+                error
+              );
+              return course;
+            }
+          })
+        );
+
+        // Option pour trier par popularité si souhaité
+        // const sortedCourses = coursesWithExtra.sort((a, b) => b.popularityScore - a.popularityScore);
+        // setCoursesWithMetadata(sortedCourses);
+
+        setCoursesWithMetadata(coursesWithExtra);
 
         // Charger les spécialités
         const specialitesData = await fetchSpecialitesFromDatabase();
@@ -43,6 +156,7 @@ const CoursesPage = () => {
         const disciplinesData = await fetchDisciplinesFromDatabase();
         setDisciplines(disciplinesData);
       } catch (error) {
+        console.error("Erreur lors du chargement des données:", error);
       } finally {
         setLoading(false);
       }
@@ -58,7 +172,7 @@ const CoursesPage = () => {
       discipline.specialiteId === selectedSpecialite
   );
 
-  const filteredCourses = courses.filter((course) => {
+  const filteredCourses = coursesWithMetadata.filter((course) => {
     // Vérifier si le cours a un titre ou utiliser un titre alternatif (titre ou "")
     const title = (course.title || course.titre || "").toLowerCase();
     // Vérifier si le cours a une description ou utiliser une chaîne vide
@@ -225,7 +339,7 @@ const CoursesPage = () => {
                       <Star
                         key={i}
                         className={`w-4 h-4 ${
-                          i < Math.round(course.rating || 4.5)
+                          i < Math.round(course.rating || 0)
                             ? "fill-current"
                             : ""
                         }`}
@@ -233,7 +347,7 @@ const CoursesPage = () => {
                     ))}
                   </div>
                   <p className="text-sm text-gray-600">
-                    ({course.rating || 4.5}/{course.totalRatings || 10}{" "}
+                    ({course.rating || 0}/{course.totalRatings || 0}{" "}
                     Évaluations)
                   </p>
                 </div>
@@ -248,13 +362,13 @@ const CoursesPage = () => {
                   <div className="flex items-center gap-2 text-gray-600">
                     <Library className="w-4 h-4" />
                     <span className="text-sm">
-                      {course.lessons || 8} Leçons
+                      {course.lessons || 0} Leçons
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-600">
                     <Users className="w-4 h-4" />
                     <span className="text-sm">
-                      {course.students || 20} Étudiants
+                      {course.students || 0} Étudiants
                     </span>
                   </div>
                 </div>

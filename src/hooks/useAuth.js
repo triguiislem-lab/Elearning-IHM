@@ -114,8 +114,17 @@ export const useAuth = () => {
 
   const getDashboardPath = useCallback(() => {
     if (!userRole) return '/login';
-    if (userRole === 'instructor') return '/instructor/courses';
-    return `/${userRole.toLowerCase()}/dashboard`;
+    
+    switch (userRole.toLowerCase()) {
+      case 'admin':
+        return '/admin/dashboard';
+      case 'instructor':
+        return '/instructor/courses';
+      case 'student':
+        return '/student/enrollments';
+      default:
+        return '/';
+    }
   }, [userRole]);
 
   return {

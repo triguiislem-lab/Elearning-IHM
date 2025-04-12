@@ -25,12 +25,21 @@ const ModuleProgressCard = ({ moduleId, courseId, moduleData, index }) => {
         setLoading(true);
         setError("");
 
-        // Vérifier la progression du module
-        const progressionRef = ref(
+        // Vérifier la progression du module dans le nouveau chemin standardisé
+        let progressionRef = ref(
           database,
-          `Elearning/Progression/${auth.currentUser.uid}/${courseId}/${moduleId}`
+          `elearning/progress/${auth.currentUser.uid}/${courseId}/${moduleId}`
         );
-        const progressionSnapshot = await get(progressionRef);
+        let progressionSnapshot = await get(progressionRef);
+
+        // Si aucun résultat, essayer le chemin hérité
+        if (!progressionSnapshot.exists()) {
+          progressionRef = ref(
+            database,
+            `Elearning/Progression/${auth.currentUser.uid}/${courseId}/${moduleId}`
+          );
+          progressionSnapshot = await get(progressionRef);
+        }
 
         if (progressionSnapshot.exists()) {
           setProgress(progressionSnapshot.val());
@@ -38,7 +47,6 @@ const ModuleProgressCard = ({ moduleId, courseId, moduleData, index }) => {
           setProgress(null);
         }
       } catch (error) {
-        
         setError("Erreur lors de la récupération de la progression du module");
       } finally {
         setLoading(false);

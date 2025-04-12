@@ -20,6 +20,7 @@ import {
   fetchFormationsFromDatabase,
   testFirebasePaths,
   fetchCourseById,
+  fetchCourseEnrollments,
 } from "../../utils/firebaseUtils";
 import { getAuth } from "firebase/auth";
 import { database } from "../../../firebaseConfig";
@@ -30,7 +31,6 @@ import CourseProgressBar from "../CourseProgress/CourseProgressBar";
 import ModuleProgressCard from "../CourseProgress/ModuleProgressCard";
 import CourseFeedback from "../Feedback/CourseFeedback";
 import ContactButtons from "../Contact/ContactButtons";
-import StudentContactForm from "../Contact/StudentContactForm";
 
 const CourseDetails = () => {
   const { id } = useParams();
@@ -188,10 +188,36 @@ const CourseDetails = () => {
     const loadCourse = async () => {
       try {
         // Utiliser la nouvelle fonction fetchCourseById qui récupère également les modules et évaluations
-        const courseWithModules = await fetchCourseById(id);
+        const courseWithModules = await fetchCourseById(id, true, true);
 
         if (courseWithModules) {
-          setCourse(courseWithModules);
+          // Récupérer les données dynamiques (nombre d'étudiants inscrits)
+          const enrollments = await fetchCourseEnrollments(
+            courseWithModules.id
+          );
+          const studentsCount = enrollments ? enrollments.length : 0;
+
+          // Compter le nombre de leçons/modules
+          let lessonsCount = 0;
+          if (
+            courseWithModules.modules &&
+            typeof courseWithModules.modules === "object"
+          ) {
+            if (Array.isArray(courseWithModules.modules)) {
+              lessonsCount = courseWithModules.modules.length;
+            } else {
+              lessonsCount = Object.keys(courseWithModules.modules).length;
+            }
+          }
+
+          // Mettre à jour le cours avec les données dynamiques
+          const enrichedCourse = {
+            ...courseWithModules,
+            students: studentsCount,
+            lessons: lessonsCount,
+          };
+
+          setCourse(enrichedCourse);
           return;
         }
 
@@ -213,16 +239,30 @@ const CourseDetails = () => {
 
           // Adapter le format si c'est une formation
           if (foundCourse) {
+            // Récupérer les données dynamiques
+            const enrollments = await fetchCourseEnrollments(foundCourse.id);
+            const studentsCount = enrollments ? enrollments.length : 0;
+
+            // Compter le nombre de leçons/modules
+            let lessonsCount = 0;
+            if (
+              foundCourse.modules &&
+              typeof foundCourse.modules === "object"
+            ) {
+              if (Array.isArray(foundCourse.modules)) {
+                lessonsCount = foundCourse.modules.length;
+              } else {
+                lessonsCount = Object.keys(foundCourse.modules).length;
+              }
+            }
+
             // Adapter les propriétés pour correspondre au format attendu
             foundCourse.title = foundCourse.titre || "Formation";
             foundCourse.duration = foundCourse.duree
               ? `${foundCourse.duree} heures`
-              : "300 heures";
-            foundCourse.lessons = 10;
-            foundCourse.students = 25;
-            foundCourse.rating = 4.7;
-            foundCourse.totalRatings = 15;
-            foundCourse.price = 49.99;
+              : "40 heures";
+            foundCourse.lessons = lessonsCount || 0;
+            foundCourse.students = studentsCount || 0;
             foundCourse.category = foundCourse.category || "Formation";
             foundCourse.level = foundCourse.level || "Intermédiaire";
             foundCourse.topics = foundCourse.description
@@ -248,11 +288,11 @@ const CourseDetails = () => {
             title: `Formation ${id}`,
             description:
               "Cette formation complète vous permettra d'acquérir les compétences nécessaires pour maîtriser les technologies modernes. Vous apprendrez les fondamentaux et les techniques avancées à travers des projets pratiques et des études de cas réelles.",
-            duration: "300 heures",
-            lessons: 10,
-            students: 25,
-            rating: 4.5,
-            totalRatings: 10,
+            duration: "40 heures",
+            lessons: 0,
+            students: 0,
+            rating: 0,
+            totalRatings: 0,
             price: 49.99,
             category: "Formation",
             level: "Intermédiaire",
@@ -347,11 +387,11 @@ const CourseDetails = () => {
           title: `Formation ${id}`,
           description:
             "Cette formation complète vous permettra d'acquérir les compétences nécessaires pour maîtriser les technologies modernes. Vous apprendrez les fondamentaux et les techniques avancées à travers des projets pratiques et des études de cas réelles.",
-          duration: "300 heures",
-          lessons: 10,
-          students: 25,
-          rating: 4.5,
-          totalRatings: 10,
+          duration: "40 heures",
+          lessons: 0,
+          students: 0,
+          rating: 0,
+          totalRatings: 0,
           price: 49.99,
           category: "Formation",
           level: "Intermédiaire",
@@ -896,15 +936,15 @@ const CourseDetails = () => {
                 <div className="flex items-center gap-4 text-gray-600">
                   <div className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />
-                    <span>{course.duration || "300 heures"}</span>
+                    <span>{course.duration || "40 heures"}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Library className="w-4 h-4" />
-                    <span>{course.lessons || 10} Lessons</span>
+                    <span>{course.lessons || 0} Leçons</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="w-4 h-4" />
-                    <span>{course.students || 20} Students</span>
+                    <span>{course.students || 0} Étudiants</span>
                   </div>
                 </div>
               </div>
@@ -1263,29 +1303,21 @@ const CourseDetails = () => {
                     </div>
                   )}
 
-                  {/* Profil du formateur - Supprimé car redondant avec le composant ci-dessus */}
-
                   {/* Feedback et avis */}
                   <CourseFeedback
                     courseId={id}
                     courseName={course?.titre || course?.title || "Cours"}
                   />
 
-                  {/* Formulaire de contact pour les étudiants */}
-                  {isEnrolled && (
-                    <StudentContactForm
-                      courseId={id}
-                      courseName={course?.titre || course?.title || "Cours"}
-                    />
-                  )}
-
-                  {/* Boutons de contact généraux */}
+                  {/* Un seul composant de contact unifié */}
                   <ContactButtons
                     courseId={id}
                     courseName={course?.titre || course?.title || "Cours"}
                     instructorId={course?.formateur || course?.instructorId}
                     instructorName={
-                      course?.formateurNom || course?.instructorName
+                      course?.formateurNom ||
+                      course?.instructorName ||
+                      course?.instructor?.name
                     }
                   />
 
@@ -1411,14 +1443,14 @@ const CourseDetails = () => {
                               <Star
                                 key={i}
                                 className={`w-4 h-4 ${
-                                  i < Math.round(course.rating || 4.5)
+                                  i < Math.round(course.rating || 0)
                                     ? "fill-current"
                                     : ""
                                 }`}
                               />
                             ))}
                           </div>
-                          <span>({course.totalRatings || 10})</span>
+                          <span>({course.totalRatings || 0})</span>
                         </div>
                       </div>
                       <div className="flex justify-between">

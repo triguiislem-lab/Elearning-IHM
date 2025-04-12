@@ -1,16 +1,70 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { useAuth } from "../../hooks/useAuth";
+import { Eye, EyeOff } from "lucide-react";
+import { getDatabase, ref, get } from "firebase/database";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { getDashboardPath } = useAuth();
+
+  // Fonction auxiliaire pour rediriger l'utilisateur en fonction de son rôle
+  const redirectBasedOnRole = async (userId) => {
+    try {
+      const database = getDatabase();
+
+      // Vérifier d'abord dans le chemin standardisé
+      const userRef = ref(database, `elearning/users/${userId}`);
+      const snapshot = await get(userRef);
+      let userData = snapshot.val();
+
+      // Si non trouvé, vérifier dans le chemin hérité
+      if (!userData) {
+        const legacyUserRef = ref(database, `users/${userId}`);
+        const legacySnapshot = await get(legacyUserRef);
+        userData = legacySnapshot.val();
+      }
+
+      if (!userData) {
+        // Si toujours pas de données utilisateur trouvées, utiliser la méthode par défaut
+        const defaultPath = getDashboardPath();
+        navigate(defaultPath, { replace: true });
+        return;
+      }
+
+      // Déterminer le rôle et rediriger en conséquence
+      const role = userData.role || userData.userType || "student";
+
+      switch (role.toLowerCase()) {
+        case "admin":
+          navigate("/admin/dashboard", { replace: true });
+          break;
+        case "instructor":
+        case "formateur":
+          navigate("/instructor/courses", { replace: true });
+          break;
+        case "student":
+        case "etudiant":
+          navigate("/student/enrollments", { replace: true });
+          break;
+        default:
+          // Fallback vers la page d'accueil
+          navigate("/", { replace: true });
+      }
+    } catch (error) {
+      console.error("Erreur lors de la redirection:", error);
+      // En cas d'erreur, utiliser la redirection par défaut
+      const defaultPath = getDashboardPath();
+      navigate(defaultPath, { replace: true });
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,92 +73,164 @@ const Login = () => {
 
     try {
       const auth = getAuth();
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
 
-      // Récupérer l'URL de redirection depuis l'état de localisation
-      const from = location.state?.from?.pathname || getDashboardPath();
-      navigate(from, { replace: true });
+      // Vérifier si la redirection est demandée par une autre page (ex: page protégée)
+      if (location.state?.from?.pathname) {
+        navigate(location.state.from.pathname, { replace: true });
+      } else {
+        // Rediriger en fonction du rôle
+        await redirectBasedOnRole(user.uid);
+      }
     } catch (error) {
-      setError("Email ou mot de passe incorrect");
-      
+      console.error("Erreur de connexion:", error);
+
+      // Gérer les différents types d'erreurs pour des messages plus précis
+      if (
+        error.code === "auth/user-not-found" ||
+        error.code === "auth/wrong-password"
+      ) {
+        setError("Email ou mot de passe incorrect");
+      } else if (error.code === "auth/invalid-email") {
+        setError("Format d'email invalide");
+      } else if (error.code === "auth/too-many-requests") {
+        setError("Trop de tentatives échouées. Veuillez réessayer plus tard.");
+      } else {
+        setError("Une erreur est survenue lors de la connexion");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Connexion à votre compte
-          </h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div
-              className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
-              role="alert"
-            >
-              <span className="block sm:inline">{error}</span>
-            </div>
-          )}
-          <div className="rounded-md shadow-sm -space-y-px">
+    <section className="bg-[#f9f9f9] py-14 md:py-24">
+      <div className="container mx-auto px-4">
+        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-md p-8">
+          <div className="text-center mb-8">
+            <h3 className="uppercase font-semibold text-orange-500">
+              Bienvenue
+            </h3>
+            <h2 className="text-3xl font-semibold mt-2">
+              Connexion à votre compte
+            </h2>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div
+                className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+                role="alert"
+              >
+                <span className="block sm:inline">{error}</span>
+              </div>
+            )}
+
             <div>
-              <label htmlFor="email-address" className="sr-only">
-                Adresse email
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Adresse Email
               </label>
               <input
-                id="email-address"
+                id="email"
                 name="email"
                 type="email"
                 autoComplete="email"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Adresse email"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Entrez votre email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
+
             <div>
-              <label htmlFor="password" className="sr-only">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 Mot de passe
               </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Mot de passe"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
+              <div className="relative">
+                <input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Entrez votre mot de passe"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  aria-label={
+                    showPassword
+                      ? "Masquer le mot de passe"
+                      : "Afficher le mot de passe"
+                  }
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                />
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 block text-sm text-gray-700"
+                >
+                  Se souvenir de moi
+                </label>
+              </div>
+              <div className="text-sm">
+                <a
+                  href="#"
+                  className="font-medium text-indigo-600 hover:text-indigo-500"
+                >
+                  Mot de passe oublié ?
+                </a>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? "Connexion en cours..." : "Se connecter"}
             </button>
-          </div>
 
-          <div className="text-sm text-center">
-            <Link
-              to="/register"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
-            >
-              Créer un compte
-            </Link>
-          </div>
-        </form>
+            <div className="text-center text-sm text-gray-600">
+              Vous n&apos;avez pas de compte ?{" "}
+              <Link
+                to="/register"
+                className="font-medium text-indigo-600 hover:text-indigo-500"
+              >
+                S&apos;inscrire
+              </Link>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
 
