@@ -449,17 +449,7 @@ const CourseForm = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-secondary focus:border-secondary"
               placeholder="Décrivez le contenu et les objectifs du cours"
             />
-            <div className="mt-2 text-sm text-blue-700">
-              <p className="font-medium">
-                Conseils pour une bonne description :
-              </p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li>Expliquez clairement les objectifs d'apprentissage</li>
-                <li>Mentionnez les prérequis nécessaires</li>
-                <li>Décrivez à qui s'adresse ce cours</li>
-                <li>Précisez les compétences que les étudiants acquerront</li>
-              </ul>
-            </div>
+         
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -596,17 +586,7 @@ const CourseForm = () => {
             </div>
           </div>
 
-          <div className="mt-2 text-sm text-blue-700">
-            <ul className="list-disc pl-5 space-y-1">
-              <li>
-                Tous les champs marqués d'un astérisque (*) sont obligatoires.
-              </li>
-              <li>
-                Vous devez sélectionner une spécialité avant de pouvoir
-                sélectionner une discipline.
-              </li>
-            </ul>
-          </div>
+          
 
           <div className="flex justify-end space-x-4 pt-4">
             <Link

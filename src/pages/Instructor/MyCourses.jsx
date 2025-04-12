@@ -91,6 +91,25 @@ const MyCourses = () => {
 
                 const enrollments = await fetchCourseEnrollments(courseId);
 
+                // Ajouter une date de création par défaut si elle n'existe pas
+                if (!courseDetails.createdAt) {
+                  console.log(
+                    `Date de création manquante pour le cours ${courseId}, ajout d'une date par défaut`
+                  );
+
+                  // Utiliser en priorité updatedAt si disponible, sinon la date actuelle moins 30 jours
+                  const defaultCreatedAt =
+                    courseDetails.updatedAt ||
+                    // Si aucune date disponible, utiliser une date antérieure (30 jours avant aujourd'hui)
+                    (() => {
+                      const date = new Date();
+                      date.setDate(date.getDate() - 30);
+                      return date.toISOString();
+                    })();
+
+                  courseDetails.createdAt = defaultCreatedAt;
+                }
+
                 return {
                   ...courseDetails,
                   students: enrollments.length,

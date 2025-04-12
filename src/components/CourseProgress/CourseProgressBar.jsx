@@ -21,9 +21,15 @@ const CourseProgressBar = ({ courseId }) => {
         setLoading(true);
         setError("");
 
-        // Récupérer tous les modules du cours
-        const modulesRef = ref(database, `Elearning/Cours/${courseId}/modules`);
-        const modulesSnapshot = await get(modulesRef);
+        // Récupérer tous les modules du cours - vérifier le nouveau chemin d'abord
+        let modulesRef = ref(database, `elearning/courses/${courseId}/modules`);
+        let modulesSnapshot = await get(modulesRef);
+
+        // Si aucun module trouvé, vérifier l'ancien chemin
+        if (!modulesSnapshot.exists()) {
+          modulesRef = ref(database, `Elearning/Cours/${courseId}/modules`);
+          modulesSnapshot = await get(modulesRef);
+        }
 
         if (modulesSnapshot.exists()) {
           const modules = modulesSnapshot.val();
@@ -33,12 +39,21 @@ const CourseProgressBar = ({ courseId }) => {
           let completed = 0;
           let totalModuleScore = 0;
 
-          // Vérifier d'abord s'il existe une progression globale du cours
-          const courseProgressRef = ref(
+          // Vérifier d'abord s'il existe une progression globale du cours dans le nouveau chemin
+          let courseProgressRef = ref(
             database,
-            `Elearning/Progression/${auth.currentUser.uid}/${courseId}`
+            `elearning/progress/${auth.currentUser.uid}/${courseId}`
           );
-          const courseProgressSnapshot = await get(courseProgressRef);
+          let courseProgressSnapshot = await get(courseProgressRef);
+
+          // Si non trouvé, vérifier l'ancien chemin
+          if (!courseProgressSnapshot.exists()) {
+            courseProgressRef = ref(
+              database,
+              `Elearning/Progression/${auth.currentUser.uid}/${courseId}`
+            );
+            courseProgressSnapshot = await get(courseProgressRef);
+          }
 
           if (courseProgressSnapshot.exists()) {
             const courseProgress = courseProgressSnapshot.val();
@@ -62,11 +77,21 @@ const CourseProgressBar = ({ courseId }) => {
           // Sinon, vérifier la progression de chaque module individuellement
           for (const moduleId of moduleIds) {
             try {
-              const progressionRef = ref(
+              // Vérifier le nouveau chemin d'abord
+              let progressionRef = ref(
                 database,
-                `Elearning/Progression/${auth.currentUser.uid}/${courseId}/${moduleId}`
+                `elearning/progress/${auth.currentUser.uid}/${courseId}/${moduleId}`
               );
-              const progressionSnapshot = await get(progressionRef);
+              let progressionSnapshot = await get(progressionRef);
+
+              // Si non trouvé, vérifier l'ancien chemin
+              if (!progressionSnapshot.exists()) {
+                progressionRef = ref(
+                  database,
+                  `Elearning/Progression/${auth.currentUser.uid}/${courseId}/${moduleId}`
+                );
+                progressionSnapshot = await get(progressionRef);
+              }
 
               if (progressionSnapshot.exists()) {
                 const moduleProgress = progressionSnapshot.val();
@@ -78,9 +103,7 @@ const CourseProgressBar = ({ courseId }) => {
                   totalModuleScore += moduleScore;
                 }
               }
-            } catch (moduleError) {
-              
-            }
+            } catch (moduleError) {}
           }
 
           setCompletedModules(completed);
@@ -101,7 +124,6 @@ const CourseProgressBar = ({ courseId }) => {
           setTotalScore(0);
         }
       } catch (error) {
-        
         setError("Erreur lors de la récupération de la progression du cours");
       } finally {
         setLoading(false);

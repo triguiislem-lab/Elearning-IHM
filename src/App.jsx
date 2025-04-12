@@ -1,4 +1,3 @@
-import React from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -37,7 +36,7 @@ import EditProfileRedirect from "./components/Redirects/EditProfileRedirect";
 import MessagesRedirect from "./components/Redirects/MessagesRedirect";
 
 const App = () => {
-  const { loading, userRole, getDashboardPath } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return <LoadingSpinner />;
@@ -52,6 +51,16 @@ const App = () => {
             {/* Public routes */}
             <Route path="/" element={<HomePage />} />
             <Route path="/courses" element={<CoursesPage />} />
+            {/* Ces routes redirigeront vers les sections de la page d'accueil */}
+            <Route path="/about" element={<Navigate to="/#about" replace />} />
+            <Route
+              path="/contact"
+              element={<Navigate to="/#contact" replace />}
+            />
+            <Route
+              path="/resources"
+              element={<Navigate to="/#resources" replace />}
+            />
             <Route path="/course/:id" element={<CourseDetails />} />
             <Route
               path="/course/:id/module/:moduleId"

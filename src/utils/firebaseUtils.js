@@ -4,6 +4,7 @@ import { fetchCompleteUserInfo } from './fetchCompleteUserInfo';
 import { getCachedData, setCachedData, clearCacheItem } from './cacheUtils';
 import * as paths from './firebasePaths';
 import { migrateAllData } from './migrationUtils';
+import { getDatabase } from 'firebase/database';
 
 /**
  * Initialise la base de données et migre les données si nécessaire
@@ -352,36 +353,60 @@ export const fetchDisciplinesFromDatabase = async () => {
 };
 
 /**
- * Récupère un cours par son ID
+ * Fonction pour récupérer un cours par son ID
  * @param {string} courseId - ID du cours
- * @param {boolean} withInstructor - Inclure les détails de l'instructeur
- * @param {boolean} withModules - Inclure les modules du cours
+ * @param {boolean} includeModules - Inclure les modules du cours
+ * @param {boolean} includeInstructor - Inclure les détails de l'instructeur
  * @returns {Object|null} Détails du cours ou null si non trouvé
  */
-export const fetchCourseById = async (courseId, withInstructor = true, withModules = true) => {
+export const fetchCourseById = async (
+	courseId,
+	includeModules = false,
+	includeInstructor = false
+) => {
 	if (!courseId) return null;
-
-	const cacheKey = `course_${courseId}_${withInstructor}_${withModules}`;
+	
+	const database = getDatabase();
+	const cacheKey = `course_${courseId}_${includeInstructor}_${includeModules}`;
 	const cachedData = getCachedData(cacheKey);
 
 	if (cachedData) {
-		console.log('Cours trouvé dans le cache:', cachedData);
 		return cachedData;
 	}
 
 	try {
-		console.log('Récupération du cours depuis Firebase:', paths.COURSE_PATH(courseId));
-		const courseRef = ref(database, paths.COURSE_PATH(courseId));
-		const snapshot = await get(courseRef);
+		// Vérifier d'abord le nouveau chemin
+		let courseRef = ref(database, `elearning/courses/${courseId}`);
+		let snapshot = await get(courseRef);
+
+		// Si non trouvé, vérifier l'ancien chemin
+		if (!snapshot.exists()) {
+			courseRef = ref(database, `Elearning/Cours/${courseId}`);
+			snapshot = await get(courseRef);
+		}
 
 		if (snapshot.exists()) {
 			const courseData = snapshot.val();
-			console.log('Données du cours trouvées:', courseData);
+			
+			// Ajouter une date de création par défaut si elle n'existe pas
+			if (!courseData.createdAt) {
+				// Utiliser updatedAt en priorité, sinon une date par défaut (30 jours avant aujourd'hui)
+				const defaultDate = new Date();
+				defaultDate.setDate(defaultDate.getDate() - 30);
+				
+				courseData.createdAt = courseData.updatedAt || defaultDate.toISOString();
+			}
+			
+			// S'assurer que l'ID est inclus
 			const course = { id: courseId, ...courseData };
 
 			// Récupérer les données de l'instructeur si demandé
-			if (withInstructor && course.instructorId) {
-				course.instructor = await fetchInstructorById(course.instructorId);
+			if (includeInstructor && course.instructorId) {
+				try {
+					course.instructor = await fetchInstructorById(course.instructorId);
+				} catch (error) {
+					console.error("Erreur lors de la récupération de l'instructeur:", error);
+				}
 			}
 
 			// Récupérer les noms de spécialité et discipline
@@ -411,67 +436,32 @@ export const fetchCourseById = async (courseId, withInstructor = true, withModul
 				}
 			}
 
-			// Récupérer les modules pour ce cours si demandé
-			if (withModules) {
-				console.log('Récupération des modules depuis:', paths.COURSE_MODULES_PATH(courseId));
-				const modulesRef = ref(database, paths.COURSE_MODULES_PATH(courseId));
-				const modulesSnapshot = await get(modulesRef);
-
-				if (modulesSnapshot.exists()) {
-					const modulesData = modulesSnapshot.val();
-					console.log('Modules trouvés:', modulesData);
-					course.modules = Object.entries(modulesData).map(([moduleId, moduleData]) => ({
+			// Si les modules sont demandés mais ne sont pas disponibles, initialiser un tableau vide
+			if (includeModules) {
+				if (course.modules && typeof course.modules === 'object') {
+					// Convertir l'objet modules en tableau
+					course.modules = Object.entries(course.modules).map(([moduleId, moduleData]) => ({
 						id: moduleId,
 						courseId,
 						...moduleData
 					}));
-
+					
 					// Trier les modules par ordre si disponible
 					course.modules.sort((a, b) => (a.order || 0) - (b.order || 0));
 				} else {
-					console.log('Aucun module trouvé pour ce cours');
 					course.modules = [];
-					
-					// Vérifier dans l'ancien format
-					console.log('Vérification dans l\'ancien format:', `${paths.LEGACY_ROOT_PATH}/Cours/${courseId}/Modules`);
-					const legacyModulesRef = ref(database, `${paths.LEGACY_ROOT_PATH}/Cours/${courseId}/Modules`);
-					const legacyModulesSnapshot = await get(legacyModulesRef);
-					
-					if (legacyModulesSnapshot.exists()) {
-						console.log('Modules trouvés dans l\'ancien format:', legacyModulesSnapshot.val());
-						const legacyModulesData = legacyModulesSnapshot.val();
-						course.modules = Object.entries(legacyModulesData).map(([moduleId, moduleData]) => {
-							// Standardiser les données du module
-							return {
-								id: moduleId,
-								courseId,
-								title: moduleData.titre || moduleData.title || 'Sans titre',
-								description: moduleData.description || '',
-								order: moduleData.ordre || moduleData.order || 0,
-								status: moduleData.status || 'active',
-								createdAt: moduleData.createdAt || new Date().toISOString(),
-								lastUpdated: moduleData.lastUpdated || new Date().toISOString(),
-								resources: moduleData.ressources || moduleData.resources || [],
-								evaluations: moduleData.evaluations || []
-							};
-						});
-						
-						// Trier les modules par ordre
-						course.modules.sort((a, b) => (a.order || 0) - (b.order || 0));
-					}
 				}
 			}
 
 			setCachedData(cacheKey, course);
 			return course;
-		} else {
-			console.log('Cours non trouvé dans Firebase');
 		}
-	} catch (error) {
-		console.error(`Erreur lors de la récupération du cours ${courseId}:`, error);
-	}
 
-	return null;
+		return null;
+	} catch (error) {
+		console.error("Erreur lors de la récupération du cours:", error);
+		throw error;
+	}
 };
 
 /**
@@ -1301,5 +1291,495 @@ export const isCourseCompleted = (modules) => {
       (typeof module.progress === 'number' && module.progress === 100)
     )
   );
+};
+
+/**
+ * Récupère des statistiques agrégées pour l'affichage sur la page d'accueil
+ * @returns {Object} Statistiques agrégées (formateurs, cours, étudiants, heures)
+ */
+export const fetchStatisticsForHomepage = async () => {
+	try {
+		// Forcer un rechargement en effaçant le cache
+		const cacheKey = 'homepage_statistics';
+		clearCacheItem(cacheKey);
+
+		console.log("Récupération des statistiques pour la page d'accueil...");
+		
+		// Récupérer tous les utilisateurs pour compter les formateurs et étudiants
+		// Vérifier d'abord les nouveaux chemins
+		let users = await fetchUsersFromDatabase();
+		let instructorsCount = 0;
+		let studentsCount = 0;
+		
+		console.log(`Nombre d'utilisateurs trouvés: ${users.length}`);
+		
+		// Si aucun utilisateur n'est trouvé dans le nouveau chemin, vérifier les anciens chemins
+		if (!users || users.length === 0) {
+			try {
+				console.log("Aucun utilisateur trouvé dans le nouveau chemin, vérification des anciens chemins");
+				// Vérifier dans Elearning/Utilisateurs
+				const legacyUsersRef = ref(database, 'Elearning/Utilisateurs');
+				const legacySnapshot = await get(legacyUsersRef);
+				
+				if (legacySnapshot.exists()) {
+					users = Object.entries(legacySnapshot.val()).map(([id, userData]) => ({
+						id,
+						...userData
+					}));
+					console.log(`${users.length} utilisateurs trouvés dans l'ancien chemin`);
+				}
+				
+				// Vérifier aussi spécifiquement les formateurs
+				const legacyFormateursRef = ref(database, 'Elearning/Formateurs');
+				const legacyFormateursSnapshot = await get(legacyFormateursRef);
+				
+				if (legacyFormateursSnapshot.exists()) {
+					const formateurs = Object.entries(legacyFormateursSnapshot.val()).map(([id, userData]) => ({
+						id,
+						...userData,
+						role: 'formateur',
+						userType: 'formateur'
+					}));
+					console.log(`${formateurs.length} formateurs trouvés dans l'ancien chemin`);
+					instructorsCount += formateurs.length;
+					
+					// Fusionner avec les utilisateurs existants
+					users = [...users, ...formateurs];
+				}
+				
+				// Vérifier aussi spécifiquement les apprenants
+				const legacyApprenantsRef = ref(database, 'Elearning/Apprenants');
+				const legacyApprenantsSnapshot = await get(legacyApprenantsRef);
+				
+				if (legacyApprenantsSnapshot.exists()) {
+					const apprenants = Object.entries(legacyApprenantsSnapshot.val()).map(([id, userData]) => ({
+						id,
+						...userData,
+						role: 'student',
+						userType: 'apprenant'
+					}));
+					console.log(`${apprenants.length} apprenants trouvés dans l'ancien chemin`);
+					studentsCount += apprenants.length;
+					
+					// Fusionner avec les utilisateurs existants
+					users = [...users, ...apprenants];
+				}
+			} catch (error) {
+				console.error("Erreur lors de la récupération des utilisateurs dans les anciens chemins:", error);
+			}
+		}
+		
+		// Compter les formateurs et étudiants depuis les utilisateurs récupérés
+		instructorsCount += users.filter(user => 
+			user.role === 'instructor' || 
+			user.role === 'formateur' || 
+			user.userType === 'formateur'
+		).length;
+		
+		studentsCount += users.filter(user => 
+			user.role === 'student' || 
+			user.role === 'etudiant' || 
+			user.userType === 'etudiant' || 
+			user.userType === 'apprenant'
+		).length;
+		
+		console.log(`Nombre de formateurs trouvés: ${instructorsCount}`);
+		console.log(`Nombre d'étudiants trouvés: ${studentsCount}`);
+		
+		// Récupérer tous les cours
+		let courses = await fetchCoursesFromDatabase(false);
+		let coursesCount = 0;
+		
+		if (courses && courses.length > 0) {
+			coursesCount = courses.length;
+			console.log(`${courses.length} cours trouvés dans le nouveau chemin`);
+		}
+		
+		// Si aucun cours n'est trouvé, vérifier les anciens chemins
+		if (!courses || courses.length === 0) {
+			try {
+				console.log("Vérification des cours dans les anciens chemins");
+				// Vérifier dans Elearning/Cours
+				const legacyCoursesRef = ref(database, 'Elearning/Cours');
+				const legacySnapshot = await get(legacyCoursesRef);
+				
+				if (legacySnapshot.exists()) {
+					const legacyCourses = Object.entries(legacySnapshot.val()).map(([id, courseData]) => ({
+						id,
+						...courseData
+					}));
+					console.log(`${legacyCourses.length} cours trouvés dans l'ancien chemin`);
+					coursesCount += legacyCourses.length;
+					courses = legacyCourses;
+				}
+				
+				// Vérifier aussi dans Elearning/Formations
+				const legacyFormationsRef = ref(database, 'Elearning/Formations');
+				const legacyFormationsSnapshot = await get(legacyFormationsRef);
+				
+				if (legacyFormationsSnapshot.exists()) {
+					const formations = Object.entries(legacyFormationsSnapshot.val()).map(([id, formationData]) => ({
+						id,
+						...formationData
+					}));
+					console.log(`${formations.length} formations trouvées dans l'ancien chemin`);
+					coursesCount += formations.length;
+					
+					// Fusionner avec les cours existants
+					courses = [...courses, ...formations];
+				}
+			} catch (error) {
+				console.error("Erreur lors de la récupération des cours dans les anciens chemins:", error);
+			}
+		}
+		
+		console.log(`Nombre total de cours: ${coursesCount}`);
+		
+		// Calculer le nombre total d'heures de contenu
+		let totalHours = 0;
+		
+		if (courses && courses.length > 0) {
+			for (const course of courses) {
+				// Extraire le nombre d'heures à partir du champ duration
+				if (course.duration) {
+					// Si la durée est au format "X heures"
+					const match = course.duration.match(/(\d+)/);
+					if (match && match[1]) {
+						totalHours += parseInt(match[1], 10);
+					}
+				} else if (course.duree) {
+					// Si c'est un nombre direct
+					if (typeof course.duree === 'number') {
+						totalHours += course.duree;
+					} else {
+						// Si c'est une chaîne, essayer de la convertir
+						const hours = parseInt(course.duree, 10);
+						if (!isNaN(hours)) {
+							totalHours += hours;
+						}
+					}
+				}
+				
+				// Vérifier aussi les modules pour les heures
+				if (course.modules && typeof course.modules === 'object') {
+					let modules = [];
+					
+					// Convertir les modules en tableau s'ils sont stockés comme un objet
+					if (Array.isArray(course.modules)) {
+						modules = course.modules;
+					} else {
+						modules = Object.values(course.modules);
+					}
+					
+					// Parcourir les modules pour trouver des durées
+					for (const module of modules) {
+						if (module && module.duration) {
+							const moduleMatch = module.duration.match(/(\d+)/);
+							if (moduleMatch && moduleMatch[1]) {
+								totalHours += parseInt(moduleMatch[1], 10);
+							}
+						} else if (module && module.duree) {
+							if (typeof module.duree === 'number') {
+								totalHours += module.duree;
+							} else {
+								const hours = parseInt(module.duree, 10);
+								if (!isNaN(hours)) {
+									totalHours += hours;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		
+		// Arrondir le nombre total d'heures
+		totalHours = Math.round(totalHours);
+		console.log(`Nombre total d'heures de contenu: ${totalHours}`);
+		
+		// Préparer l'objet de statistiques avec les vraies données
+		const statistics = {
+			instructorsCount,
+			coursesCount,
+			studentsCount,
+			totalHours
+		};
+		
+		console.log("Statistiques finales:", statistics);
+		
+		return statistics;
+	} catch (error) {
+		console.error('Erreur lors de la récupération des statistiques:', error);
+		
+		// Retourner des statistiques vides en cas d'erreur
+		return {
+			instructorsCount: 0,
+			coursesCount: 0,
+			studentsCount: 0,
+			totalHours: 0
+		};
+	}
+};
+
+/**
+ * Récupère les témoignages d'étudiants depuis la base de données
+ * @param {number} limit - Nombre maximum de témoignages à récupérer (0 pour tous)
+ * @returns {Array} Liste des témoignages
+ */
+export const fetchTestimonialsFromDatabase = async (limit = 0) => {
+	try {
+		// Vérifier le cache
+		const cacheKey = `testimonials_${limit}`;
+		
+		// Forcer un rechargement
+		clearCacheItem(cacheKey);
+		
+		const cachedTestimonials = getCachedData(cacheKey);
+		if (cachedTestimonials) {
+			return cachedTestimonials;
+		}
+		
+		console.log("Récupération des témoignages...");
+		
+		let allTestimonials = [];
+		
+		// 1. PRIORITÉ: Récupérer d'abord les feedbacks des cours
+		try {
+			console.log("Récupération des feedbacks des cours...");
+			// Récupérer tous les cours
+			const courses = await fetchCoursesFromDatabase(false);
+			console.log(`${courses.length} cours trouvés pour rechercher des feedbacks`);
+			
+			// Chemins possibles pour les feedbacks des cours
+			const feedbackPaths = [
+				'elearning/feedback/courses', 
+				'Elearning/Feedback', 
+				'feedback/courses'
+			];
+			
+			let coursesFeedbacks = [];
+			
+			// Pour chaque cours, rechercher des feedbacks dans différents chemins
+			for (const course of courses) {
+				if (course.id) {
+					// Essayer tous les chemins possibles pour ce cours
+					for (const basePath of feedbackPaths) {
+						try {
+							const feedbackRef = ref(database, `${basePath}/${course.id}`);
+							const snapshot = await get(feedbackRef);
+							
+							if (snapshot.exists()) {
+								const feedbacks = snapshot.val();
+								
+								// Convertir les feedbacks en témoignages
+								const courseTestimonials = Object.entries(feedbacks)
+									.map(([userId, feedback]) => {
+										// Ne garder que les feedbacks avec des commentaires intéressants
+										if (feedback && 
+											feedback.comment && 
+											feedback.comment.trim() !== '' &&
+											feedback.comment.length > 15) {
+											
+											return {
+												id: `${course.id}_${userId}`,
+												name: feedback.userName || feedback.name || 'Étudiant',
+												role: feedback.userRole || feedback.role || 'Apprenant',
+												comment: feedback.comment,
+												rating: feedback.rating || 5,
+												courseId: course.id,
+												courseName: feedback.courseName || course.title || course.titre || 'Cours',
+												// Ajouter un avatar par défaut ou utiliser celui fourni
+												avatar: feedback.userAvatar || feedback.avatar || 
+													"https://ui-avatars.com/api/?name=" + encodeURIComponent(feedback.userName || feedback.name || 'Étudiant') + "&background=random"
+											};
+										}
+										return null;
+									})
+									.filter(item => item !== null);
+								
+								if (courseTestimonials.length > 0) {
+									console.log(`${courseTestimonials.length} témoignages trouvés pour le cours ${course.id}`);
+									coursesFeedbacks = [...coursesFeedbacks, ...courseTestimonials];
+								}
+							}
+						} catch (error) {
+							console.error(`Erreur lors de la récupération des feedbacks depuis ${basePath}/${course.id}:`, error);
+						}
+					}
+				}
+			}
+			
+			if (coursesFeedbacks.length > 0) {
+				console.log(`Total de ${coursesFeedbacks.length} feedbacks de cours trouvés`);
+				allTestimonials = [...allTestimonials, ...coursesFeedbacks];
+			}
+		} catch (error) {
+			console.error('Erreur lors de la récupération des feedbacks des cours:', error);
+		}
+		
+		// 2. SECONDAIRE: Chemins à vérifier pour les témoignages généraux
+		const paths = [
+			'elearning/testimonials', 
+			'Elearning/Testimonials',
+			'elearning/feedback/general',
+			'Elearning/Feedback/general'
+		];
+		
+		// Parcourir tous les chemins
+		for (const path of paths) {
+			try {
+				const testimonialsRef = ref(database, path);
+				const snapshot = await get(testimonialsRef);
+				
+				if (snapshot.exists()) {
+					const data = snapshot.val();
+					
+					// Le format peut varier selon le chemin
+					if (Array.isArray(data)) {
+						// Si c'est un tableau
+						console.log(`${data.length} témoignages trouvés dans un tableau à ${path}`);
+						allTestimonials = [...allTestimonials, ...data];
+					} else if (typeof data === 'object') {
+						// Si c'est un objet, il peut y avoir différentes structures
+						
+						// Format 1: { id1: { ... }, id2: { ... } }
+						const testimonials = Object.entries(data).map(([id, testimonial]) => {
+							// Vérifier si c'est un témoignage complet ou une collection par cours
+							if (testimonial.comment || testimonial.name || testimonial.rating) {
+								// C'est un témoignage
+								return {
+									id,
+									...testimonial,
+									// Normaliser les champs
+									name: testimonial.name || testimonial.userName || 'Étudiant',
+									role: testimonial.role || testimonial.userRole || 'Étudiant',
+									comment: testimonial.comment || testimonial.text || testimonial.message || '',
+									rating: testimonial.rating || 5,
+									// Ajouter un avatar par défaut si nécessaire
+									avatar: testimonial.avatar || testimonial.userAvatar || 
+										"https://ui-avatars.com/api/?name=" + encodeURIComponent(testimonial.name || testimonial.userName || 'Étudiant') + "&background=random"
+								};
+							} else if (typeof testimonial === 'object') {
+								// C'est une collection de témoignages par cours ou par utilisateur
+								const subTestimonials = Object.entries(testimonial).map(([subId, subTestimonial]) => {
+									return {
+										id: `${id}_${subId}`,
+										...subTestimonial,
+										// Normaliser les champs
+										name: subTestimonial.name || subTestimonial.userName || 'Étudiant',
+										role: subTestimonial.role || subTestimonial.userRole || 'Étudiant',
+										comment: subTestimonial.comment || subTestimonial.text || subTestimonial.message || '',
+										rating: subTestimonial.rating || 5,
+										// Ajouter un avatar par défaut si nécessaire
+										avatar: subTestimonial.avatar || subTestimonial.userAvatar || 
+											"https://ui-avatars.com/api/?name=" + encodeURIComponent(subTestimonial.name || subTestimonial.userName || 'Étudiant') + "&background=random"
+									};
+								});
+								return subTestimonials;
+							}
+							return null;
+						})
+						.filter(item => item !== null)
+						.flat();
+						
+						if (testimonials.length > 0) {
+							console.log(`${testimonials.length} témoignages trouvés dans un objet à ${path}`);
+							allTestimonials = [...allTestimonials, ...testimonials];
+						}
+					}
+				}
+			} catch (error) {
+				console.error(`Erreur lors de la récupération des témoignages depuis ${path}:`, error);
+			}
+		}
+		
+		console.log(`Total de ${allTestimonials.length} témoignages récupérés avant filtrage`);
+		
+		// Filtrer les témoignages avec des commentaires trop courts
+		allTestimonials = allTestimonials.filter(testimonial => 
+			testimonial.comment && 
+			testimonial.comment.trim().length > 15
+		);
+		
+		// Filtrer les doublons basés sur l'ID
+		const uniqueTestimonials = Array.from(
+			new Map(allTestimonials.map(item => [item.id, item])).values()
+		);
+		
+		// Trier par note (les meilleures notes d'abord)
+		const sortedTestimonials = uniqueTestimonials.sort((a, b) => {
+			// D'abord par note
+			const ratingDiff = (b.rating || 5) - (a.rating || 5);
+			if (ratingDiff !== 0) return ratingDiff;
+			
+			// Ensuite par longueur de commentaire (les plus longs d'abord)
+			return (b.comment?.length || 0) - (a.comment?.length || 0);
+		});
+		
+		// Limiter le nombre de témoignages si demandé
+		const limitedTestimonials = limit > 0 ? sortedTestimonials.slice(0, limit) : sortedTestimonials;
+		
+		// Si aucun témoignage n'est trouvé, ajouter quelques témoignages par défaut
+		if (limitedTestimonials.length === 0) {
+			console.log("Aucun témoignage trouvé, utilisation de témoignages par défaut");
+			const defaultTestimonials = [
+				{
+					id: 'default1',
+					name: 'Sophie Martin',
+					role: 'Développeuse Web',
+					comment: 'Cette formation a transformé ma carrière. Les compétences acquises m\'ont permis de trouver un emploi dans une entreprise innovante.',
+					rating: 5,
+					avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+				},
+				{
+					id: 'default2',
+					name: 'Thomas Dubois',
+					role: 'Chef de projet',
+					comment: 'Formation complète et bien structurée. Les projets pratiques sont particulièrement utiles pour consolider les connaissances.',
+					rating: 4.5,
+					avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+				},
+				{
+					id: 'default3',
+					name: 'Camille Leroy',
+					role: 'Étudiante',
+					comment: 'Excellente plateforme pour apprendre à son rythme. Les formateurs sont disponibles et les ressources très bien faites.',
+					rating: 5,
+					avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+				}
+			];
+			
+			return defaultTestimonials;
+		}
+		
+		console.log(`${limitedTestimonials.length} témoignages finalement retenus`);
+		
+		// Mettre en cache les témoignages
+		setCachedData(cacheKey, limitedTestimonials, 3600);
+		
+		return limitedTestimonials;
+	} catch (error) {
+		console.error('Erreur lors de la récupération des témoignages:', error);
+		
+		// Retourner des témoignages par défaut en cas d'erreur
+		return [
+			{
+				id: 'default1',
+				name: 'Sophie Martin',
+				role: 'Développeuse Web',
+				comment: 'Cette formation a transformé ma carrière. Les compétences acquises m\'ont permis de trouver un emploi dans une entreprise innovante.',
+				rating: 5,
+				avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+			},
+			{
+				id: 'default2',
+				name: 'Thomas Dubois',
+				role: 'Chef de projet',
+				comment: 'Formation complète et bien structurée. Les projets pratiques sont particulièrement utiles pour consolider les connaissances.',
+				rating: 4,
+				avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80'
+			}
+		];
+	}
 };
 

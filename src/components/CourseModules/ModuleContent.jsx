@@ -11,6 +11,7 @@ import {
   MdErrorOutline,
   MdNotStarted,
 } from "react-icons/md";
+import { synchronizeProgressPaths } from "../../utils/progressUtils";
 
 const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
   const { user } = useAuth();
@@ -152,6 +153,10 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
     if (!user || !moduleData || !moduleData.id || !moduleData.courseId) return;
 
     try {
+      // Synchroniser les chemins de progression d'abord
+      await synchronizeProgressPaths(user.uid, moduleData.courseId);
+
+      // Vérifier dans le nouveau chemin standardisé
       const progressRef = ref(
         database,
         `elearning/progress/${user.uid}/${moduleData.courseId}/${moduleData.id}`
@@ -161,6 +166,9 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
       if (snapshot.exists()) {
         const progressData = snapshot.val();
         setCurrentProgress(progressData.progress || 0);
+      } else {
+        // Si toujours pas trouvé, réinitialiser à 0
+        setCurrentProgress(0);
       }
     } catch (error) {
       console.error("Erreur lors du chargement de la progression:", error);
@@ -201,6 +209,9 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
       setProgressUpdating(true);
       setError("");
 
+      // Synchroniser d'abord les chemins de progression
+      await synchronizeProgressPaths(user.uid, moduleData.courseId);
+
       const progressData = {
         moduleId: moduleData.id,
         courseId: moduleData.courseId,
@@ -214,12 +225,20 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
         progressData.score = score;
       }
 
+      // Mettre à jour dans le nouveau chemin
       const progressRef = ref(
         database,
         `elearning/progress/${user.uid}/${moduleData.courseId}/${moduleData.id}`
       );
-
       await set(progressRef, progressData);
+
+      // Mettre à jour aussi dans l'ancien chemin pour garantir la synchronisation
+      const legacyProgressRef = ref(
+        database,
+        `Elearning/Progression/${user.uid}/${moduleData.courseId}/${moduleData.id}`
+      );
+      await set(legacyProgressRef, progressData);
+
       setCurrentProgress(newProgress);
 
       if (newProgress === 100 && onComplete) {
@@ -239,6 +258,7 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
     if (!user || !moduleData || !moduleData.courseId) return;
 
     try {
+      // Récupérer la progression du cours dans le nouveau chemin
       const progressRef = ref(
         database,
         `elearning/progress/${user.uid}/${moduleData.courseId}`
@@ -247,7 +267,7 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
 
       if (snapshot.exists()) {
         const modules = Object.values(snapshot.val()).filter(
-          (m) => m && typeof m === "object"
+          (m) => m && typeof m === "object" && m.moduleId
         );
 
         if (modules.length === 0) return;
@@ -264,17 +284,29 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
                 validModules.length
               : 0;
 
+          // Mettre à jour le statut du cours dans le nouveau chemin
           const courseStatusRef = ref(
             database,
             `elearning/courses/${moduleData.courseId}/status/${user.uid}`
           );
 
-          await set(courseStatusRef, {
+          const statusData = {
             completed: true,
             score: Math.round(averageScore),
             completedAt: new Date().toISOString(),
             passed: averageScore >= 70,
-          });
+          };
+
+          // Mettre à jour dans le nouveau chemin
+          await set(courseStatusRef, statusData);
+
+          // Mettre à jour aussi dans l'ancien chemin
+          const legacyCourseStatusRef = ref(
+            database,
+            `Elearning/Cours/${moduleData.courseId}/status/${user.uid}`
+          );
+
+          await set(legacyCourseStatusRef, statusData);
         }
       }
     } catch (error) {

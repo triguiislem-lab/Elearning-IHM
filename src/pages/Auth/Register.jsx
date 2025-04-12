@@ -16,6 +16,7 @@ const Register = () => {
     confirmPassword: "",
     bio: "",
     phone: "",
+    userType: "student", // Par défaut: étudiant
   });
 
   const handleInputChange = (e) => {
@@ -52,13 +53,12 @@ const Register = () => {
         formData.firstName,
         formData.lastName,
         formData.bio,
-        formData.phone
+        formData.phone,
+        formData.userType // Ajout du type d'utilisateur
       );
 
       navigate("/login");
     } catch (error) {
-      
-
       // Handle specific errors
       if (error.code === "auth/email-already-in-use") {
         setError(
@@ -98,6 +98,53 @@ const Register = () => {
                 <span className="block sm:inline">{error}</span>
               </div>
             )}
+
+            {/* Type d'utilisateur */}
+            <div>
+              <label
+                htmlFor="userType"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                Je m&apos;inscris en tant que
+              </label>
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <input
+                    type="radio"
+                    id="student"
+                    name="userType"
+                    value="student"
+                    checked={formData.userType === "student"}
+                    onChange={handleInputChange}
+                    className="hidden peer"
+                  />
+                  <label
+                    htmlFor="student"
+                    className="flex justify-center items-center p-4 border rounded-lg cursor-pointer peer-checked:border-indigo-500 peer-checked:bg-indigo-50 hover:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-center font-medium">Étudiant</span>
+                  </label>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="radio"
+                    id="instructor"
+                    name="userType"
+                    value="instructor"
+                    checked={formData.userType === "instructor"}
+                    onChange={handleInputChange}
+                    className="hidden peer"
+                  />
+                  <label
+                    htmlFor="instructor"
+                    className="flex justify-center items-center p-4 border rounded-lg cursor-pointer peer-checked:border-indigo-500 peer-checked:bg-indigo-50 hover:bg-gray-50 transition-colors"
+                  >
+                    <span className="text-center font-medium">Formateur</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label
@@ -248,18 +295,18 @@ const Register = () => {
               disabled={loading}
               className="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Inscription en cours..." : "Créer le compte"}
+              {loading ? "Inscription en cours..." : "S'inscrire"}
             </button>
 
-            <p className="text-center text-gray-600 text-sm">
-              Vous avez déjà un compte?{" "}
+            <div className="text-center text-sm text-gray-600">
+              Vous avez déjà un compte ?{" "}
               <Link
                 to="/login"
-                className="text-indigo-600 hover:text-indigo-800 font-medium"
+                className="font-medium text-indigo-600 hover:text-indigo-500"
               >
-                Connectez-vous
+                Se connecter
               </Link>
-            </p>
+            </div>
           </form>
         </div>
       </div>

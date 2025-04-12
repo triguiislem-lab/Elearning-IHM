@@ -2,19 +2,23 @@ import React, { useState, useEffect } from "react";
 import { Clock, Star, Library, Users, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { fetchCoursesFromDatabase } from "../../utils/firebaseUtils";
+import {
+  fetchCoursesFromDatabase,
+  fetchCourseEnrollments,
+} from "../../utils/firebaseUtils";
 import OptimizedLoadingSpinner from "../Common/OptimizedLoadingSpinner";
+import { getDatabase, ref, get } from "firebase/database";
 
 const Course = ({ course, index }) => {
-  // Définir des valeurs par défaut pour les propriétés manquantes
-  const rating = course.rating || 4.5;
-  const totalRatings = course.totalRatings || 10;
+  // Utiliser les données réelles sans valeurs par défaut artificielles
+  const rating = course.rating || 0;
+  const totalRatings = course.totalRatings || 0;
   const price =
     typeof course.price === "number"
       ? course.price
       : parseFloat(course.price) || 29.99;
-  const lessons = course.lessons || 8;
-  const students = course.students || 20;
+  const lessons = course.lessons || 0;
+  const students = course.students || 0;
   const level = course.level || "Intermédiaire";
   const duration = course.duree ? `${course.duree} heures` : "40 heures";
 
@@ -94,15 +98,130 @@ const Course = ({ course, index }) => {
 };
 
 export const Courses = () => {
-  const [courses, setCourses] = useState([]);
+  const [popularCourses, setPopularCourses] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadCourses = async () => {
       try {
-        const coursesData = await fetchCoursesFromDatabase();
-        setCourses(coursesData);
+        // Récupérer tous les cours
+        const coursesData = await fetchCoursesFromDatabase(true);
+
+        // Enrichir les cours avec des métadonnées (nombre d'étudiants, notes, etc.)
+        const database = getDatabase();
+        const enrichedCourses = await Promise.all(
+          coursesData.map(async (course) => {
+            try {
+              // Récupérer le nombre d'inscriptions pour ce cours
+              const enrollments = await fetchCourseEnrollments(course.id);
+              const studentsCount = enrollments.length;
+
+              // Compter le nombre de leçons (modules)
+              let lessonsCount = 0;
+              if (course.modules && typeof course.modules === "object") {
+                if (Array.isArray(course.modules)) {
+                  lessonsCount = course.modules.length;
+                } else {
+                  lessonsCount = Object.keys(course.modules).length;
+                }
+              }
+
+              // Récupérer les données de feedback depuis Firebase
+              let rating = course.rating || 0;
+              let totalRatings = course.totalRatings || 0;
+
+              // Vérifier si les ratings ne sont pas déjà présents dans l'objet course
+              if (!course.rating || !course.totalRatings) {
+                // Essayer de récupérer les ratings depuis différents chemins
+                const feedbackRef = ref(
+                  database,
+                  `Elearning/Cours/${course.id}`
+                );
+                const feedbackSnapshot = await get(feedbackRef);
+
+                if (feedbackSnapshot.exists()) {
+                  const courseData = feedbackSnapshot.val();
+                  rating = courseData.rating || 0;
+                  totalRatings = courseData.totalRatings || 0;
+                }
+
+                // Si toujours pas de ratings, essayer le chemin alternatif
+                if (rating === 0 && totalRatings === 0) {
+                  const altFeedbackRef = ref(
+                    database,
+                    `elearning/courses/${course.id}`
+                  );
+                  const altFeedbackSnapshot = await get(altFeedbackRef);
+
+                  if (altFeedbackSnapshot.exists()) {
+                    const altCourseData = altFeedbackSnapshot.val();
+                    rating = altCourseData.rating || 0;
+                    totalRatings = altCourseData.totalRatings || 0;
+                  }
+                }
+
+                // Si toujours pas de ratings, calculer à partir des feedbacks
+                if (rating === 0 && totalRatings === 0) {
+                  const feedbacksRef = ref(
+                    database,
+                    `Elearning/Feedback/${course.id}`
+                  );
+                  const feedbacksSnapshot = await get(feedbacksRef);
+
+                  if (feedbacksSnapshot.exists()) {
+                    const feedbacks = feedbacksSnapshot.val();
+                    const feedbacksList = Object.values(feedbacks);
+
+                    if (feedbacksList.length > 0) {
+                      const sum = feedbacksList.reduce(
+                        (acc, fb) => acc + (fb.rating || 0),
+                        0
+                      );
+                      rating = parseFloat(
+                        (sum / feedbacksList.length).toFixed(1)
+                      );
+                      totalRatings = feedbacksList.length;
+                    }
+                  }
+                }
+              }
+
+              // Ajouter les métriques de popularité
+              return {
+                ...course,
+                students: studentsCount,
+                lessons: lessonsCount,
+                rating: rating,
+                totalRatings: totalRatings,
+                // Créer un score de popularité basé sur les notes et le nombre d'inscriptions
+                // La formule peut être ajustée selon les besoins
+                popularityScore: rating * 10 + studentsCount,
+                // S'assurer que nous avons une date pour le tri par récence
+                createdAt: course.createdAt || new Date().toISOString(),
+              };
+            } catch (error) {
+              console.error(`Erreur pour le cours ${course.id}:`, error);
+              return course;
+            }
+          })
+        );
+
+        // Tri des cours par score de popularité (notes + inscriptions)
+        // Ou par date (le plus récent en premier) si demandé
+        // Vous pouvez changer cette ligne pour modifier le critère de tri
+        const sortedCourses = enrichedCourses.sort((a, b) => {
+          // Pour trier par popularité (meilleurs feedbacks)
+          return b.popularityScore - a.popularityScore;
+
+          // Pour trier par date (plus récents)
+          // return new Date(b.createdAt) - new Date(a.createdAt);
+        });
+
+        // Ne garder que les 3 premiers cours
+        const topThreeCourses = sortedCourses.slice(0, 3);
+        setPopularCourses(topThreeCourses);
       } catch (error) {
+        console.error("Erreur lors du chargement des cours populaires:", error);
       } finally {
         setLoading(false);
       }
@@ -113,8 +232,11 @@ export const Courses = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <OptimizedLoadingSpinner size="large" text="Chargement des cours..." />
+      <div className="py-14 flex items-center justify-center">
+        <OptimizedLoadingSpinner
+          size="large"
+          text="Chargement des cours populaires..."
+        />
       </div>
     );
   }
@@ -132,7 +254,7 @@ export const Courses = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {courses.map((course, index) => (
+          {popularCourses.map((course, index) => (
             <Course key={course.id} course={course} index={index} />
           ))}
         </div>

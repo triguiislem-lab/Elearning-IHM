@@ -9,6 +9,7 @@ import {
   isCourseCompleted,
   fetchUserEnrollments,
 } from "../../utils/firebaseUtils";
+import { getUserCourseProgress } from "../../utils/progressUtils";
 import { Link } from "react-router-dom";
 import {
   MdPlayCircle,
@@ -16,14 +17,137 @@ import {
   MdCheckCircle,
   MdAccessTime,
 } from "react-icons/md";
-import CourseModules from "../../components/CourseModules/CourseModules";
+import CourseProgressBar from "../../components/CourseProgress/CourseProgressBar";
 import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
+import { getDatabase } from "firebase/database";
+import { ref, get, set } from "firebase/database";
 
 const MyCourses = () => {
   const [userInfo, setUserInfo] = useState(null);
   const [courses, setCourses] = useState([]);
+  const [courseProgress, setCourseProgress] = useState({});
   const [loading, setLoading] = useState(true);
   const auth = getAuth();
+
+  // Fonction pour charger la progression des cours
+  const loadCoursesProgress = async (userId, courseIds) => {
+    const progressData = {};
+    const database = getDatabase();
+
+    try {
+      // Pour chaque cours, essayer de récupérer les données de progression
+      await Promise.all(
+        courseIds.map(async (courseId) => {
+          try {
+            // Essayer d'abord le nouveau chemin standardisé
+            const progressRef = ref(
+              database,
+              `elearning/progress/${userId}/${courseId}`
+            );
+            let snapshot = await get(progressRef);
+
+            // Si aucun résultat, essayer l'ancien chemin
+            if (!snapshot.exists()) {
+              const legacyProgressRef = ref(
+                database,
+                `Elearning/Progression/${userId}/${courseId}`
+              );
+              snapshot = await get(legacyProgressRef);
+            }
+
+            if (snapshot.exists()) {
+              // Si les données existent, les utiliser
+              const data = snapshot.val();
+              progressData[courseId] = {
+                progress: data.progress || 0,
+                completed: data.completed || false,
+                score: data.score || 0,
+                lastUpdated: data.lastUpdated || new Date().toISOString(),
+              };
+            } else {
+              // Créer des données de progression par défaut
+              const moduleRef = ref(
+                database,
+                `elearning/courses/${courseId}/modules`
+              );
+              let moduleSnapshot = await get(moduleRef);
+
+              // Vérifier aussi l'ancien chemin si nécessaire
+              if (!moduleSnapshot.exists()) {
+                const legacyModuleRef = ref(
+                  database,
+                  `Elearning/Cours/${courseId}/modules`
+                );
+                moduleSnapshot = await get(legacyModuleRef);
+              }
+
+              const moduleCount = moduleSnapshot.exists()
+                ? Object.keys(moduleSnapshot.val()).length
+                : 0;
+
+              // Définir une progression par défaut à 0%
+              progressData[courseId] = {
+                progress: 0,
+                completed: false,
+                score: 0,
+                totalModules: moduleCount,
+                completedModules: 0,
+                lastUpdated: new Date().toISOString(),
+              };
+
+              // Initialiser la progression dans Firebase si elle n'existe pas
+              await set(progressRef, {
+                courseId,
+                userId,
+                progress: 0,
+                completed: false,
+                score: 0,
+                startDate: new Date().toISOString(),
+                lastUpdated: new Date().toISOString(),
+                details: {
+                  totalModules: moduleCount,
+                  completedModules: 0,
+                  moduleScores: {},
+                },
+              });
+            }
+          } catch (error) {
+            console.error(
+              `Erreur lors du chargement de la progression pour le cours ${courseId}:`,
+              error
+            );
+            // En cas d'erreur, définir une progression par défaut
+            progressData[courseId] = {
+              progress: 0,
+              completed: false,
+              score: 0,
+              lastUpdated: new Date().toISOString(),
+            };
+          }
+        })
+      );
+
+      console.log("Données de progression réelles chargées:", progressData);
+      setCourseProgress(progressData);
+    } catch (error) {
+      console.error(
+        "Erreur lors du chargement des progressions des cours:",
+        error
+      );
+
+      // Même en cas d'erreur, utiliser des données à 0%
+      const defaultData = {};
+      courseIds.forEach((courseId) => {
+        defaultData[courseId] = {
+          progress: 0,
+          completed: false,
+          score: 0,
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+      setCourseProgress(defaultData);
+    }
+  };
 
   useEffect(() => {
     const loadUserInfo = async () => {
@@ -89,7 +213,10 @@ const MyCourses = () => {
                 // Convertir la Map en tableau
                 const uniqueCoursesData = Array.from(uniqueCoursesMap.values());
 
+                // Définir les cours
                 setCourses(uniqueCoursesData);
+
+                // Charger la progression pour tous les cours est maintenant géré par CourseProgressBar
               } catch (coursesError) {
                 setCourses([]);
               }
@@ -193,6 +320,7 @@ const MyCourses = () => {
       } else {
         setUserInfo(null);
         setCourses([]);
+        setCourseProgress({});
         setLoading(false);
       }
     });
@@ -240,17 +368,8 @@ const MyCourses = () => {
           {courses.length > 0 ? (
             <div className="space-y-8">
               {courses.map((course, index) => {
-                // Calculer le score et la progression si le cours a des modules
+                // Vérifier si le cours a des modules
                 const hasModules = course?.modules && course.modules.length > 0;
-                const courseScore = hasModules
-                  ? calculateCourseScore(course.modules)
-                  : 0;
-                const progressPercentage = hasModules
-                  ? calculateCourseProgress(course.modules)
-                  : 0;
-                const courseCompleted = hasModules
-                  ? isCourseCompleted(course.modules)
-                  : false;
 
                 return (
                   <motion.div
@@ -271,28 +390,11 @@ const MyCourses = () => {
                             {new Date(course.enrolledAt).toLocaleDateString()}
                           </p>
                         </div>
-                        <div className="flex flex-col items-end">
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              courseCompleted
-                                ? "bg-green-100 text-green-800"
-                                : "bg-yellow-100 text-yellow-800"
-                            }`}
-                          >
-                            {courseCompleted ? "Réussi" : "En cours"}
-                          </span>
-                          <div className="mt-2 flex items-center gap-2">
-                            <div className="w-32 bg-gray-200 rounded-full h-2">
-                              <div
-                                className="bg-secondary h-2 rounded-full"
-                                style={{ width: `${progressPercentage}%` }}
-                              ></div>
-                            </div>
-                            <span className="text-xs text-gray-600">
-                              {progressPercentage}%
-                            </span>
-                          </div>
-                        </div>
+                      </div>
+
+                      {/* Utilisation du composant CourseProgressBar pour afficher la progression réelle */}
+                      <div className="mb-6">
+                        <CourseProgressBar courseId={course.id} />
                       </div>
 
                       <div className="grid md:grid-cols-3 gap-6 mt-6">
@@ -349,71 +451,41 @@ const MyCourses = () => {
                           {hasModules ? (
                             <div>
                               <h3 className="text-lg font-semibold mb-3">
-                                Progression des modules
+                                Modules du cours
                               </h3>
                               <div className="space-y-3">
-                                {course.modules.map((module, idx) => (
-                                  <div
-                                    key={module.id}
-                                    className="border rounded-lg p-3"
-                                  >
-                                    <div className="flex justify-between items-center">
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className={`w-6 h-6 rounded-full flex items-center justify-center ${
-                                            module.status === "completed"
-                                              ? "bg-green-100 text-green-600"
-                                              : "bg-yellow-100 text-yellow-600"
-                                          }`}
-                                        >
-                                          {module.status === "completed" ? (
-                                            <MdCheckCircle />
-                                          ) : (
-                                            <MdAccessTime />
-                                          )}
-                                        </div>
-                                        <span className="font-medium">
-                                          Module {idx + 1}:{" "}
-                                          {module.title ||
-                                            module.titre ||
-                                            "Module sans titre"}
-                                        </span>
-                                      </div>
-                                      <span
-                                        className={`text-sm font-medium ${
-                                          module.score >= 70
-                                            ? "text-green-600"
-                                            : "text-yellow-600"
-                                        }`}
-                                      >
-                                        {module.score}%
-                                      </span>
-                                    </div>
-                                    {module.evaluations &&
-                                      module.evaluations.length > 0 && (
-                                        <div className="mt-2 pl-8">
-                                          <p className="text-xs text-gray-500 mb-1">
-                                            {module.evaluations.length}{" "}
-                                            évaluation(s)
-                                          </p>
-                                          <div className="flex flex-wrap gap-2">
-                                            {module.evaluations.map(
-                                              (evaluation, evalIdx) => (
-                                                <span
-                                                  key={evalIdx}
-                                                  className="text-xs px-2 py-1 bg-gray-100 rounded-full"
-                                                >
-                                                  {evaluation.title ||
-                                                    `Évaluation ${evalIdx + 1}`}
-                                                  : {evaluation.score || 0}%
-                                                </span>
-                                              )
+                                {Object.entries(course.modules).map(
+                                  ([moduleId, module], idx) => (
+                                    <div
+                                      key={moduleId}
+                                      className="border rounded-lg p-3"
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                          <div
+                                            className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                                              module.status === "completed"
+                                                ? "bg-green-100 text-green-600"
+                                                : "bg-yellow-100 text-yellow-600"
+                                            }`}
+                                          >
+                                            {module.status === "completed" ? (
+                                              <MdCheckCircle />
+                                            ) : (
+                                              <MdAccessTime />
                                             )}
                                           </div>
+                                          <span className="font-medium">
+                                            Module {idx + 1}:{" "}
+                                            {module.title ||
+                                              module.titre ||
+                                              "Module sans titre"}
+                                          </span>
                                         </div>
-                                      )}
-                                  </div>
-                                ))}
+                                      </div>
+                                    </div>
+                                  )
+                                )}
                               </div>
                             </div>
                           ) : (
@@ -445,9 +517,9 @@ const MyCourses = () => {
               </p>
               <Link
                 to="/courses"
-                className="bg-secondary text-white px-6 py-2 rounded-full hover:bg-secondary/90 transition-colors duration-300 inline-block"
+                className="inline-block bg-secondary text-white px-6 py-2 rounded-lg hover:bg-secondary/90 transition-colors duration-300"
               >
-                Parcourir les formations
+                Explorer les formations
               </Link>
             </div>
           )}
