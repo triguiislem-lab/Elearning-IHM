@@ -33,18 +33,19 @@ const Footer = () => {
 	};
 
 	return (
-		<footer className='bg-[#0f172a] text-white pt-12 rounded-t-3xl'>
+		<footer className='bg-[#0f172a] text-white pt-12'>
 			<div className='container px-4 mx-auto'>
 				<div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8'>
 					{/* Brand section */}
 					<div className='space-y-4'>
-						<div className='text-2xl flex items-center gap-2 font-bold uppercase'>
+						<div className='text-2xl flex items-center gap-2 font-bold'>
 							<MdComputer className='text-secondary text-4xl' />
-							<p>E-Tutor</p>
+							<p>E-Learning</p>
 						</div>
 						<p className='text-gray-300 mt-4'>
-							Empowering minds through innovative online learning experiences.
-							Join thousands of learners worldwide on their journey to success.
+							Développez vos compétences grâce à des expériences d'apprentissage
+							en ligne innovantes. Rejoignez des milliers d'apprenants sur leur
+							chemin vers la réussite.
 						</p>
 						<div className='flex items-center justify-start gap-5 !mt-6'>
 							<a
@@ -100,7 +101,7 @@ const Footer = () => {
 									to='/courses'
 									className='text-gray-300 hover:text-secondary duration-200 flex items-center gap-2'>
 									<MdSchool className='text-secondary' />
-									Cours
+									Formations
 								</Link>
 							</li>
 							<li>
@@ -126,12 +127,12 @@ const Footer = () => {
 							</li>
 							<li className='flex items-center gap-3'>
 								<MdEmail className='text-secondary text-xl' />
-								<span className='text-gray-300'>contact@e-tutor.com</span>
+								<span className='text-gray-300'>contact@e-learning.com</span>
 							</li>
 							<li className='flex items-start gap-3'>
 								<MdLocationOn className='text-secondary text-xl mt-1' />
 								<span className='text-gray-300'>
-									123 Avenue de la Formation,
+									123 Avenue de l'Apprentissage,
 									<br />
 									Tunis, 1002
 								</span>
@@ -177,7 +178,7 @@ const Footer = () => {
 				{/* Copyright and Policies */}
 				<div className='text-center py-6 border-t-2 border-gray-800/10'>
 					<span className='text-sm text-gray-400'>
-						© 2024 E-Tutor. Tous droits réservés.
+						© 2024 E-Learning. Tous droits réservés.
 					</span>
 				</div>
 			</div>

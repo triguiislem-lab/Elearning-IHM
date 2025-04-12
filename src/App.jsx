@@ -13,6 +13,8 @@ import HomePage from './pages/HomePage';
 import CoursesPage from './pages/CoursesPage';
 import CourseDetails from './components/SubjectCard/CourseDetails';
 import ModulePage from './pages/ModulePage';
+import SpecialtiesPage from './pages/SpecialtiesPage';
+import SpecialtyDetailPage from './pages/SpecialtyDetailPage';
 import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 import Footer from './components/Footer/Footer';
@@ -53,14 +55,41 @@ const App = () => {
 
 	return (
 		<Router>
-			<div className='flex flex-col min-h-screen'>
+			<div className='flex flex-col min-h-screen overflow-x-hidden'>
 				<Navbar />
-				<main className='flex-grow'>
+				<main className='flex-grow pt-20'>
 					<Routes>
 						{/* Public routes */}
 						<Route
 							path='/'
 							element={<HomePage />}
+						/>
+						<Route
+							path='/about'
+							element={
+								<Navigate
+									to='/#about'
+									replace
+								/>
+							}
+						/>
+						<Route
+							path='/contact'
+							element={
+								<Navigate
+									to='/#contact'
+									replace
+								/>
+							}
+						/>
+						<Route
+							path='/resources'
+							element={
+								<Navigate
+									to='/#resources'
+									replace
+								/>
+							}
 						/>
 						<Route
 							path='/courses'
@@ -73,6 +102,14 @@ const App = () => {
 						<Route
 							path='/course/:id/module/:moduleId'
 							element={<ModulePage />}
+						/>
+						<Route
+							path='/specialites'
+							element={<SpecialtiesPage />}
+						/>
+						<Route
+							path='/specialite/:id'
+							element={<SpecialtyDetailPage />}
 						/>
 						<Route
 							path='/login'
@@ -127,7 +164,12 @@ const App = () => {
 							/>
 							<Route
 								path='my-courses'
-								element={<MyCourses />}
+								element={
+									<Navigate
+										to='/student/enrollments'
+										replace
+									/>
+								}
 							/>
 							<Route
 								path='edit-profile'
