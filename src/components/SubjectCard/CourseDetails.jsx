@@ -14,15 +14,16 @@ import {
   MessageSquare,
   UserCheck,
 } from "lucide-react";
+import { MdInfo } from "react-icons/md";
 import { motion } from "framer-motion";
 import Breadcrumb from "../Common/Breadcrumb";
 import {
   fetchCoursesFromDatabase,
   fetchFormationsFromDatabase,
   testFirebasePaths,
-  fetchCourseById,
   fetchCourseEnrollments,
 } from "../../utils/firebaseUtils";
+import { fetchCourseByIdFixed as fetchCourseById } from "../../utils/fetchCourseByIdFixed";
 import { getAuth } from "firebase/auth";
 import { database } from "../../../firebaseConfig";
 import { ref, get, set } from "firebase/database";
@@ -1030,49 +1031,78 @@ const CourseDetails = () => {
                   )}
 
                   {/* Course Modules and Evaluations (when no module is selected) */}
-                  {!showModuleContent &&
-                    (course.modules && course.modules.length > 0 ? (
-                      <div>
-                        {isEnrolled ? (
-                          <div className="mb-6">
-                            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                              <BarChart2 size={20} />
-                              Progression des modules
-                            </h2>
-                            <div className="space-y-4">
-                              {Object.entries(course.modules).map(
-                                ([moduleId, moduleData], index) => (
-                                  <ModuleProgressCard
-                                    key={moduleId}
-                                    moduleId={moduleId}
-                                    courseId={id}
-                                    moduleData={moduleData}
-                                    index={index}
-                                  />
-                                )
-                              )}
+                  {!showModuleContent && (
+                    <div>
+                      {course.modules &&
+                      (Array.isArray(course.modules)
+                        ? course.modules.length > 0
+                        : Object.keys(course.modules).length > 0) ? (
+                        <div>
+                          {isEnrolled && auth.currentUser ? (
+                            <div className="mb-6">
+                              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                                <BarChart2 size={20} />
+                                Progression des modules
+                              </h2>
+                              <div className="space-y-4">
+                                {Object.entries(course.modules).map(
+                                  ([moduleId, moduleData], index) => {
+                                    // Handle case where moduleData is just a boolean (true)
+                                    if (typeof moduleData === "boolean") {
+                                      return null; // Skip this module as it doesn't have proper data
+                                    }
+                                    return (
+                                      <ModuleProgressCard
+                                        key={moduleId}
+                                        moduleId={moduleId}
+                                        courseId={id}
+                                        moduleData={moduleData}
+                                        index={index}
+                                      />
+                                    );
+                                  }
+                                )}
+                              </div>
                             </div>
+                          ) : (
+                            <CourseModules
+                              course={{ ...course, id }}
+                              isEnrolled={isEnrolled}
+                              onModuleSelect={(module) => {
+                                if (isEnrolled) {
+                                  setActiveModule(module);
+                                  setShowModuleContent(true);
+                                } else {
+                                  // Afficher un message d'inscription si l'utilisateur n'est pas inscrit
+                                  alert(
+                                    "Vous devez être inscrit à ce cours pour accéder au contenu des modules."
+                                  );
+                                  setShowEnrollPopup(true);
+                                }
+                              }}
+                            />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-blue-50 p-4 rounded-lg text-blue-800 flex items-center gap-3 mb-6">
+                          <MdInfo className="text-blue-500 text-xl" />
+                          <div>
+                            <p className="font-medium">
+                              Aucun module disponible
+                            </p>
+                            <p className="text-sm">
+                              Le formateur n'a pas encore ajouté de modules à ce
+                              cours.
+                            </p>
                           </div>
-                        ) : (
-                          <CourseModules
-                            course={{ ...course, id }}
-                            isEnrolled={isEnrolled}
-                            onModuleSelect={(module) => {
-                              if (isEnrolled) {
-                                setActiveModule(module);
-                                setShowModuleContent(true);
-                              } else {
-                                // Afficher un message d'inscription si l'utilisateur n'est pas inscrit
-                                alert(
-                                  "Vous devez être inscrit à ce cours pour accéder au contenu des modules."
-                                );
-                                setShowEnrollPopup(true);
-                              }
-                            }}
-                          />
-                        )}
+                        </div>
+                      )}
 
-                        {!isEnrolled && (
+                      {!isEnrolled &&
+                        course.modules &&
+                        (Array.isArray(course.modules)
+                          ? course.modules.length > 0
+                          : Object.keys(course.modules).length > 0) && (
                           <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mt-4 mb-8">
                             <p className="text-gray-700 mb-2 flex items-center">
                               <svg
@@ -1111,22 +1141,8 @@ const CourseDetails = () => {
                             </button>
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="bg-white p-6 rounded-xl shadow-sm mb-8">
-                        <h2 className="text-xl font-semibold mb-4">
-                          Modules du cours
-                        </h2>
-                        <div className="text-center py-8 bg-gray-50 rounded-lg">
-                          <p className="text-gray-600 mb-4">
-                            Aucun module n&apos;a été ajouté à ce cours.
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            Ce cours ne contient pas encore de modules.
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                    </div>
+                  )}
 
                   {/* Topics */}
                   <div className="bg-white p-6 rounded-xl shadow-sm mb-8">
@@ -1367,7 +1383,7 @@ const CourseDetails = () => {
                         ).toFixed(2)}
                       </h3>
 
-                      {isEnrolled ? (
+                      {isEnrolled && auth.currentUser ? (
                         <div className="mb-4">
                           <div className="bg-green-100 text-green-800 p-3 rounded-lg flex items-center gap-2 mb-3">
                             <svg

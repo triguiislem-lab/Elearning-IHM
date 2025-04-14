@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { getAuth } from 'firebase/auth';
-import { getDatabase, ref, push, get, set } from 'firebase/database';
-import { MdStar, MdStarBorder, MdSend, MdThumbUp } from 'react-icons/md';
+import React, { useState, useEffect } from "react";
+import { getAuth } from "firebase/auth";
+import { getDatabase, ref, push, get, set } from "firebase/database";
+import { MdStar, MdStarBorder, MdSend, MdThumbUp } from "react-icons/md";
 
 const CourseFeedback = ({ courseId, courseName }) => {
   const [rating, setRating] = useState(0);
-  const [comment, setComment] = useState('');
+  const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [existingFeedback, setExistingFeedback] = useState(null);
   const [allFeedbacks, setAllFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,38 +23,153 @@ const CourseFeedback = ({ courseId, courseName }) => {
 
       setLoading(true);
       try {
-        // Vérifier si l'utilisateur a déjà donné un feedback
+        let userFeedbackData = null;
+        let allFeedbacksData = [];
+
+        // Vérifier si l'utilisateur a déjà donné un feedback (chemin standardisé)
         if (auth.currentUser) {
-          const userFeedbackRef = ref(database, `Elearning/Feedback/${courseId}/${auth.currentUser.uid}`);
-          const userFeedbackSnapshot = await get(userFeedbackRef);
-          
-          if (userFeedbackSnapshot.exists()) {
-            const feedbackData = userFeedbackSnapshot.val();
-            setExistingFeedback(feedbackData);
-            setRating(feedbackData.rating || 0);
-            setComment(feedbackData.comment || '');
+          // Vérifier d'abord dans le chemin standardisé (lowercase)
+          const standardUserFeedbackRef = ref(
+            database,
+            `elearning/feedback/${courseId}/${auth.currentUser.uid}`
+          );
+          const standardUserFeedbackSnapshot = await get(
+            standardUserFeedbackRef
+          );
+
+          if (standardUserFeedbackSnapshot.exists()) {
+            userFeedbackData = standardUserFeedbackSnapshot.val();
+          } else {
+            // Vérifier ensuite dans le chemin hérité (capitalized)
+            const legacyUserFeedbackRef = ref(
+              database,
+              `Elearning/Feedback/${courseId}/${auth.currentUser.uid}`
+            );
+            const legacyUserFeedbackSnapshot = await get(legacyUserFeedbackRef);
+
+            if (legacyUserFeedbackSnapshot.exists()) {
+              userFeedbackData = legacyUserFeedbackSnapshot.val();
+
+              // Synchroniser avec le chemin standardisé
+              await set(standardUserFeedbackRef, userFeedbackData);
+            }
+          }
+
+          if (userFeedbackData) {
+            setExistingFeedback(userFeedbackData);
+            setRating(userFeedbackData.rating || 0);
+            setComment(userFeedbackData.comment || "");
           }
         }
 
-        // Récupérer tous les feedbacks pour ce cours
-        const allFeedbacksRef = ref(database, `Elearning/Feedback/${courseId}`);
-        const allFeedbacksSnapshot = await get(allFeedbacksRef);
-        
-        if (allFeedbacksSnapshot.exists()) {
-          const feedbacksData = allFeedbacksSnapshot.val();
-          const feedbacksList = Object.values(feedbacksData).map(feedback => ({
+        // Récupérer tous les feedbacks pour ce cours (chemin standardisé)
+        const standardFeedbacksRef = ref(
+          database,
+          `elearning/feedback/${courseId}`
+        );
+        const standardFeedbacksSnapshot = await get(standardFeedbacksRef);
+
+        if (standardFeedbacksSnapshot.exists()) {
+          const feedbacksData = standardFeedbacksSnapshot.val();
+          console.log("Standard path feedbacks:", feedbacksData);
+
+          // Convert to array with userId included
+          allFeedbacksData = Object.entries(feedbacksData).map(
+            ([userId, data]) => ({
+              ...data,
+              userId: data.userId || userId, // Ensure userId is set
+            })
+          );
+        }
+
+        // Vérifier aussi dans le chemin hérité
+        const legacyFeedbacksRef = ref(
+          database,
+          `Elearning/Feedback/${courseId}`
+        );
+        const legacyFeedbacksSnapshot = await get(legacyFeedbacksRef);
+
+        if (legacyFeedbacksSnapshot.exists()) {
+          const legacyFeedbacksData = legacyFeedbacksSnapshot.val();
+          console.log("Legacy path feedbacks:", legacyFeedbacksData);
+
+          // Fusionner avec les données standardisées en évitant les doublons
+          const legacyFeedbacks = Object.entries(legacyFeedbacksData).map(
+            ([userId, feedback]) => {
+              // S'assurer que le feedback a un userId
+              const feedbackWithUserId = {
+                ...feedback,
+                userId: feedback.userId || userId, // Utiliser le userId existant ou celui de la clé
+              };
+
+              // Synchroniser avec le chemin standardisé si pas déjà présent
+              const standardUserFeedbackRef = ref(
+                database,
+                `elearning/feedback/${courseId}/${userId}`
+              );
+              set(standardUserFeedbackRef, feedbackWithUserId);
+
+              return feedbackWithUserId;
+            }
+          );
+
+          // Ajouter uniquement les feedbacks qui ne sont pas déjà dans allFeedbacksData
+          // Vérifier d'abord si les feedbacks dans allFeedbacksData ont un userId
+          const enhancedAllFeedbacksData = allFeedbacksData.map((feedback) => {
+            if (!feedback.userId && feedback.userEmail) {
+              // Essayer de trouver le userId correspondant dans les feedbacks hérités
+              const matchingLegacyFeedback = legacyFeedbacks.find(
+                (lf) => lf.userEmail === feedback.userEmail
+              );
+              if (matchingLegacyFeedback && matchingLegacyFeedback.userId) {
+                return { ...feedback, userId: matchingLegacyFeedback.userId };
+              }
+            }
+            return feedback;
+          });
+
+          // Maintenant, filtrer les doublons
+          const existingUserIds = new Set(
+            enhancedAllFeedbacksData
+              .filter((f) => f.userId) // Filtrer uniquement ceux qui ont un userId
+              .map((f) => f.userId)
+          );
+
+          const existingEmails = new Set(
+            enhancedAllFeedbacksData
+              .filter((f) => f.userEmail && !f.userId) // Ceux qui ont un email mais pas d'userId
+              .map((f) => f.userEmail)
+          );
+
+          const uniqueLegacyFeedbacks = legacyFeedbacks.filter((f) => {
+            // Garder si l'userId n'existe pas déjà ET si l'email n'existe pas déjà (pour ceux sans userId)
+            return (
+              !existingUserIds.has(f.userId) &&
+              (!f.userEmail || !existingEmails.has(f.userEmail))
+            );
+          });
+
+          allFeedbacksData = [
+            ...enhancedAllFeedbacksData,
+            ...uniqueLegacyFeedbacks,
+          ];
+        }
+
+        if (allFeedbacksData.length > 0) {
+          // Formater les dates et trier
+          const formattedFeedbacks = allFeedbacksData.map((feedback) => ({
             ...feedback,
-            date: feedback.date ? new Date(feedback.date) : new Date()
+            date: feedback.date ? new Date(feedback.date) : new Date(),
           }));
-          
+
           // Trier par date (plus récent d'abord)
-          feedbacksList.sort((a, b) => b.date - a.date);
-          
-          setAllFeedbacks(feedbacksList);
+          formattedFeedbacks.sort((a, b) => b.date - a.date);
+
+          console.log("Final merged feedbacks:", formattedFeedbacks);
+          setAllFeedbacks(formattedFeedbacks);
         }
       } catch (error) {
-        
-        setError('Erreur lors de la récupération des feedbacks');
+        setError("Erreur lors de la récupération des feedbacks");
       } finally {
         setLoading(false);
       }
@@ -69,49 +184,62 @@ const CourseFeedback = ({ courseId, courseName }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!auth.currentUser) {
-      setError('Vous devez être connecté pour laisser un feedback');
+      setError("Vous devez être connecté pour laisser un feedback");
       return;
     }
 
     if (rating === 0) {
-      setError('Veuillez sélectionner une note');
+      setError("Veuillez sélectionner une note");
       return;
     }
 
     setSubmitting(true);
-    setError('');
-    
+    setError("");
+
     try {
       const feedbackData = {
-        userId: auth.currentUser.uid,
-        userName: auth.currentUser.displayName || 'Utilisateur anonyme',
+        userId: auth.currentUser.uid, // Assurez-vous que l'userId est toujours défini
+        userName: auth.currentUser.displayName || "Utilisateur anonyme",
         userEmail: auth.currentUser.email,
         courseId,
         courseName,
         rating,
         comment,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
       };
 
-      // Enregistrer le feedback dans Firebase
-      const feedbackRef = ref(database, `Elearning/Feedback/${courseId}/${auth.currentUser.uid}`);
-      await set(feedbackRef, feedbackData);
+      console.log("Submitting feedback data:", feedbackData);
 
-      // Mettre à jour la note moyenne du cours
-      const courseRef = ref(database, `Elearning/Cours/${courseId}`);
-      const courseSnapshot = await get(courseRef);
-      
-      if (courseSnapshot.exists()) {
-        const courseData = courseSnapshot.val();
+      // Enregistrer le feedback dans Firebase (chemin standardisé)
+      const standardFeedbackRef = ref(
+        database,
+        `elearning/feedback/${courseId}/${auth.currentUser.uid}`
+      );
+      await set(standardFeedbackRef, feedbackData);
+
+      // Enregistrer aussi dans le chemin hérité pour la compatibilité
+      const legacyFeedbackRef = ref(
+        database,
+        `Elearning/Feedback/${courseId}/${auth.currentUser.uid}`
+      );
+      await set(legacyFeedbackRef, feedbackData);
+
+      // Mettre à jour la note moyenne du cours (chemin standardisé)
+      const standardCourseRef = ref(database, `elearning/courses/${courseId}`);
+      const standardCourseSnapshot = await get(standardCourseRef);
+
+      // Vérifier d'abord dans le chemin standardisé
+      if (standardCourseSnapshot.exists()) {
+        const courseData = standardCourseSnapshot.val();
         const currentRating = courseData.rating || 0;
         const totalRatings = courseData.totalRatings || 0;
-        
+
         // Calculer la nouvelle note moyenne
         let newRating;
         let newTotalRatings;
-        
+
         if (existingFeedback) {
           // Mettre à jour un feedback existant
           const oldRating = existingFeedback.rating || 0;
@@ -124,54 +252,117 @@ const CourseFeedback = ({ courseId, courseName }) => {
           const totalScore = currentRating * totalRatings;
           const newTotalScore = totalScore + rating;
           newTotalRatings = totalRatings + 1;
-          newRating = newTotalRatings > 0 ? newTotalScore / newTotalRatings : rating;
+          newRating =
+            newTotalRatings > 0 ? newTotalScore / newTotalRatings : rating;
         }
-        
+
+        // Mettre à jour la note moyenne du cours (chemin standardisé)
+        await set(
+          ref(database, `elearning/courses/${courseId}/rating`),
+          parseFloat(newRating.toFixed(1))
+        );
+        await set(
+          ref(database, `elearning/courses/${courseId}/totalRatings`),
+          newTotalRatings
+        );
+      }
+
+      // Vérifier aussi dans le chemin hérité
+      const legacyCourseRef = ref(database, `Elearning/Cours/${courseId}`);
+      const legacyCourseSnapshot = await get(legacyCourseRef);
+
+      if (legacyCourseSnapshot.exists()) {
+        const courseData = legacyCourseSnapshot.val();
+        const currentRating = courseData.rating || 0;
+        const totalRatings = courseData.totalRatings || 0;
+
+        // Calculer la nouvelle note moyenne
+        let newRating;
+        let newTotalRatings;
+
+        if (existingFeedback) {
+          // Mettre à jour un feedback existant
+          const oldRating = existingFeedback.rating || 0;
+          const totalScore = currentRating * totalRatings;
+          const newTotalScore = totalScore - oldRating + rating;
+          newRating = totalRatings > 0 ? newTotalScore / totalRatings : rating;
+          newTotalRatings = totalRatings;
+        } else {
+          // Ajouter un nouveau feedback
+          const totalScore = currentRating * totalRatings;
+          const newTotalScore = totalScore + rating;
+          newTotalRatings = totalRatings + 1;
+          newRating =
+            newTotalRatings > 0 ? newTotalScore / newTotalRatings : rating;
+        }
+
         // Mettre à jour la note moyenne du cours
-        await set(ref(database, `Elearning/Cours/${courseId}/rating`), parseFloat(newRating.toFixed(1)));
-        await set(ref(database, `Elearning/Cours/${courseId}/totalRatings`), newTotalRatings);
+        await set(
+          ref(database, `Elearning/Cours/${courseId}/rating`),
+          parseFloat(newRating.toFixed(1))
+        );
+        await set(
+          ref(database, `Elearning/Cours/${courseId}/totalRatings`),
+          newTotalRatings
+        );
       }
 
       setSuccess(true);
       setExistingFeedback(feedbackData);
-      
+
       // Ajouter le nouveau feedback à la liste
       if (!existingFeedback) {
-        setAllFeedbacks([feedbackData, ...allFeedbacks]);
+        console.log("Adding new feedback to list:", feedbackData);
+        const newFeedbacksList = [feedbackData, ...allFeedbacks];
+        console.log("New feedbacks list:", newFeedbacksList);
+        setAllFeedbacks(newFeedbacksList);
       } else {
         // Mettre à jour le feedback existant dans la liste
-        const updatedFeedbacks = allFeedbacks.map(feedback => 
-          feedback.userId === auth.currentUser.uid ? feedbackData : feedback
-        );
+        console.log("Updating existing feedback in list");
+        const updatedFeedbacks = allFeedbacks.map((feedback) => {
+          if (feedback.userId === auth.currentUser.uid) {
+            console.log("Found feedback to update:", feedback);
+            return feedbackData;
+          }
+          return feedback;
+        });
+        console.log("Updated feedbacks list:", updatedFeedbacks);
         setAllFeedbacks(updatedFeedbacks);
       }
-      
+
       setTimeout(() => {
         setSuccess(false);
       }, 3000);
     } catch (error) {
-      
-      setError('Erreur lors de l\'envoi du feedback');
+      setError("Erreur lors de l'envoi du feedback");
     } finally {
       setSubmitting(false);
     }
   };
 
   // Calculer la note moyenne
-  const averageRating = allFeedbacks.length > 0
-    ? (allFeedbacks.reduce((sum, feedback) => sum + (feedback.rating || 0), 0) / allFeedbacks.length).toFixed(1)
-    : 0;
+  const averageRating =
+    allFeedbacks.length > 0
+      ? (
+          allFeedbacks.reduce(
+            (sum, feedback) => sum + (feedback.rating || 0),
+            0
+          ) / allFeedbacks.length
+        ).toFixed(1)
+      : 0;
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mb-6">
       <h2 className="text-xl font-bold mb-4">Avis et commentaires</h2>
-      
+
       {/* Résumé des avis */}
       <div className="mb-6 p-4 bg-gray-50 rounded-lg">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center">
-              <span className="text-3xl font-bold text-gray-800">{averageRating}</span>
+              <span className="text-3xl font-bold text-gray-800">
+                {averageRating}
+              </span>
               <div className="ml-2">
                 <div className="flex items-center">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -185,19 +376,20 @@ const CourseFeedback = ({ courseId, courseName }) => {
                   ))}
                 </div>
                 <p className="text-sm text-gray-600">
-                  {allFeedbacks.length} {allFeedbacks.length === 1 ? 'avis' : 'avis'}
+                  {allFeedbacks.length}{" "}
+                  {allFeedbacks.length === 1 ? "avis" : "avis"}
                 </p>
               </div>
             </div>
           </div>
         </div>
       </div>
-      
+
       {/* Formulaire de feedback */}
       {auth.currentUser ? (
         <div className="mb-8">
           <h3 className="text-lg font-semibold mb-3">
-            {existingFeedback ? 'Modifier votre avis' : 'Laisser un avis'}
+            {existingFeedback ? "Modifier votre avis" : "Laisser un avis"}
           </h3>
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
@@ -256,7 +448,7 @@ const CourseFeedback = ({ courseId, courseName }) => {
               ) : (
                 <>
                   <MdSend className="mr-2" />
-                  {existingFeedback ? 'Mettre à jour' : 'Envoyer'}
+                  {existingFeedback ? "Mettre à jour" : "Envoyer"}
                 </>
               )}
             </button>
@@ -267,49 +459,62 @@ const CourseFeedback = ({ courseId, courseName }) => {
           Connectez-vous pour laisser un avis sur ce cours.
         </div>
       )}
-      
+
       {/* Liste des avis */}
       <div>
-        <h3 className="text-lg font-semibold mb-3">Avis des participants</h3>
+        <h3 className="text-lg font-semibold mb-3">
+          Avis des participants ({allFeedbacks.length})
+        </h3>
+        {console.log("Rendering feedback list, count:", allFeedbacks.length)}
         {loading ? (
           <div className="flex justify-center items-center h-20">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-secondary"></div>
           </div>
         ) : allFeedbacks.length > 0 ? (
           <div className="space-y-4">
-            {allFeedbacks.map((feedback, index) => (
-              <div key={index} className="p-4 border border-gray-200 rounded-lg">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center mb-1">
-                      <span className="font-medium mr-2">{feedback.userName}</span>
-                      <div className="flex">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <span key={star}>
-                            {star <= feedback.rating ? (
-                              <MdStar className="text-yellow-400 text-sm" />
-                            ) : (
-                              <MdStarBorder className="text-yellow-400 text-sm" />
-                            )}
-                          </span>
-                        ))}
+            {allFeedbacks.map((feedback, index) => {
+              console.log("Rendering feedback item:", feedback);
+              return (
+                <div
+                  key={feedback.userId || index}
+                  className="p-4 border border-gray-200 rounded-lg"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center mb-1">
+                        <span className="font-medium mr-2">
+                          {feedback.userName || "Utilisateur"}
+                        </span>
+                        <div className="flex">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <span key={star}>
+                              {star <= feedback.rating ? (
+                                <MdStar className="text-yellow-400 text-sm" />
+                              ) : (
+                                <MdStarBorder className="text-yellow-400 text-sm" />
+                              )}
+                            </span>
+                          ))}
+                        </div>
                       </div>
+                      <p className="text-xs text-gray-500 mb-2">
+                        {feedback.date instanceof Date
+                          ? feedback.date.toLocaleDateString()
+                          : new Date(feedback.date).toLocaleDateString()}
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 mb-2">
-                      {feedback.date instanceof Date
-                        ? feedback.date.toLocaleDateString()
-                        : new Date(feedback.date).toLocaleDateString()}
-                    </p>
                   </div>
+                  {feedback.comment && (
+                    <p className="text-gray-700 mt-2">{feedback.comment}</p>
+                  )}
                 </div>
-                {feedback.comment && (
-                  <p className="text-gray-700 mt-2">{feedback.comment}</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
-          <p className="text-gray-600">Aucun avis pour le moment. Soyez le premier à donner votre avis !</p>
+          <p className="text-gray-600">
+            Aucun avis pour le moment. Soyez le premier à donner votre avis !
+          </p>
         )}
       </div>
     </div>

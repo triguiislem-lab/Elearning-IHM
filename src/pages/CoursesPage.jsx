@@ -269,15 +269,15 @@ const CoursesPage = () => {
               <label htmlFor="search" className="form-label">
                 Rechercher
               </label>
-              <div className="relative flex items-center">
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 text-secondary">
-                  <Search size={20} />
+              <div className="flex">
+                <div className="bg-secondary/10 flex items-center justify-center px-3 rounded-l-md border border-r-0 border-secondary/20">
+                  <Search size={20} className="text-secondary" />
                 </div>
                 <input
                   id="search"
                   type="text"
                   placeholder="Rechercher des cours..."
-                  className="form-input pl-10 w-full border-secondary/20 focus:border-secondary focus:ring focus:ring-secondary/20"
+                  className="form-input rounded-l-none w-full border-secondary/20 focus:border-secondary focus:ring focus:ring-secondary/20"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />

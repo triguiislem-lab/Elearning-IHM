@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle,
@@ -32,6 +32,7 @@ const ModuleResources = ({
   onResourceComplete,
   moduleId,
   courseId,
+  isEnrolled = true, // Par défaut, on considère que l'utilisateur est inscrit
 }) => {
   const { user } = useAuth();
   const [completedResources, setCompletedResources] = useState(new Set());
@@ -39,7 +40,25 @@ const ModuleResources = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const hasResources = Array.isArray(resources) && resources.length > 0;
+  // Normalize resources if they're not in the expected format
+  const normalizedResources = useMemo(() => {
+    if (!resources) return [];
+
+    // If resources is already an array, use it
+    if (Array.isArray(resources)) return resources;
+
+    // If resources is an object, convert it to an array
+    if (typeof resources === "object") {
+      return Object.entries(resources).map(([id, resource]) => ({
+        id,
+        ...resource,
+      }));
+    }
+
+    return [];
+  }, [resources]);
+
+  const hasResources = normalizedResources.length > 0;
 
   useEffect(() => {
     if (courseId && moduleId && user) {
@@ -75,7 +94,7 @@ const ModuleResources = ({
   };
 
   const handleResourceView = async (resourceId) => {
-    if (!user || !moduleId || !courseId) return;
+    if (!user || !moduleId || !courseId || !isEnrolled) return;
 
     try {
       if (!completedResources.has(resourceId)) {
@@ -108,7 +127,7 @@ const ModuleResources = ({
   };
 
   const handleResourceOpen = (resource) => {
-    if (!resource || !resource.url) return;
+    if (!resource || !resource.url || !isEnrolled) return;
 
     // Marquer la ressource comme consultée
     handleResourceView(resource.id);
@@ -198,7 +217,7 @@ const ModuleResources = ({
       </div>
 
       <AnimatePresence>
-        {resources.map((resource, index) => (
+        {normalizedResources.map((resource, index) => (
           <motion.div
             key={resource.id || index}
             initial={{ opacity: 0, y: 20 }}
@@ -239,14 +258,21 @@ const ModuleResources = ({
                 )}
                 <button
                   onClick={() => handleResourceOpen(resource)}
+                  disabled={!isEnrolled}
                   className={`px-3 py-1 text-sm rounded-full
                     ${
-                      completedResources.has(resource.id)
+                      !isEnrolled
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : completedResources.has(resource.id)
                         ? "bg-green-50 text-green-600 hover:bg-green-100"
                         : "bg-blue-50 text-blue-600 hover:bg-blue-100"
                     } transition-colors duration-200`}
                 >
-                  {completedResources.has(resource.id) ? "Revoir" : "Ouvrir"}
+                  {!isEnrolled
+                    ? "Inscription requise"
+                    : completedResources.has(resource.id)
+                    ? "Revoir"
+                    : "Ouvrir"}
                 </button>
                 <button
                   onClick={() => handleResourceView(resource.id)}

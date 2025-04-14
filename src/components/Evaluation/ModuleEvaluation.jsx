@@ -14,7 +14,12 @@ import {
 } from "react-icons/md";
 import { QuizComponent } from "./QuizComponent";
 
-const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
+const ModuleEvaluation = ({
+  module,
+  onComplete,
+  attempts = [],
+  isEnrolled = true,
+}) => {
   const { user } = useAuth();
   const [activeEvaluation, setActiveEvaluation] = useState(null);
   const [quizQuestions, setQuizQuestions] = useState([]);
@@ -36,9 +41,13 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
 
       // Vérifier si les évaluations sont directement dans le module
       if (module.evaluations) {
+        console.log("Module evaluations:", module.evaluations);
+
         if (Array.isArray(module.evaluations)) {
+          console.log("Module evaluations is already an array");
           evalsArray = [...module.evaluations];
         } else if (typeof module.evaluations === "object") {
+          console.log("Converting module evaluations object to array");
           evalsArray = Object.entries(module.evaluations).map(
             ([id, evalItem]) => ({
               id,
@@ -46,6 +55,8 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
             })
           );
         }
+
+        console.log("Normalized evaluations array:", evalsArray);
       }
 
       // Si aucune évaluation n'est trouvée, chercher les quiz statiques
@@ -68,11 +79,26 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
 
     try {
       setLoading(true);
+      console.log("Looking for static quiz for module:", module.id);
+
+      // Check standard path
       const quizRef = ref(
         database,
         `elearning/evaluations/${module.id}/static_quiz`
       );
-      const snapshot = await get(quizRef);
+      let snapshot = await get(quizRef);
+
+      // If not found, check legacy path
+      if (!snapshot.exists()) {
+        console.log(
+          "Static quiz not found in standard path, checking legacy path"
+        );
+        const legacyQuizRef = ref(
+          database,
+          `Elearning/Evaluations/${module.id}/static_quiz`
+        );
+        snapshot = await get(legacyQuizRef);
+      }
 
       if (snapshot.exists()) {
         setHasStaticQuiz(true);
@@ -148,6 +174,7 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
     try {
       setLoading(true);
       setError(null);
+      console.log("Loading quiz questions for evaluation:", evaluationId);
 
       let questionsPath;
       if (evaluationId === "static_quiz") {
@@ -157,7 +184,23 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
       }
 
       const questionsRef = ref(database, questionsPath);
-      const snapshot = await get(questionsRef);
+      let snapshot = await get(questionsRef);
+
+      // If not found, check legacy path
+      if (!snapshot.exists()) {
+        console.log(
+          "Questions not found in standard path, checking legacy path"
+        );
+        let legacyQuestionsPath;
+        if (evaluationId === "static_quiz") {
+          legacyQuestionsPath = `Elearning/Evaluations/${module.id}/static_quiz/questions`;
+        } else {
+          legacyQuestionsPath = `Elearning/Evaluations/${module.id}/${evaluationId}/questions`;
+        }
+
+        const legacyQuestionsRef = ref(database, legacyQuestionsPath);
+        snapshot = await get(legacyQuestionsRef);
+      }
 
       if (snapshot.exists()) {
         const questions = snapshot.val();
@@ -271,6 +314,27 @@ const ModuleEvaluation = ({ module, onComplete, attempts = [] }) => {
           onComplete={handleQuizComplete}
           initialScore={userScore}
         />
+      </div>
+    );
+  }
+
+  // If user is not enrolled, show a message
+  if (!isEnrolled) {
+    return (
+      <div className="bg-yellow-50 p-4 rounded-lg text-yellow-800 flex items-center gap-3">
+        <MdWarning className="text-yellow-500 text-xl" />
+        <div>
+          <p className="font-medium">Accès limité</p>
+          <p className="text-sm">
+            Vous devez être inscrit à ce cours pour accéder aux évaluations.
+          </p>
+          <button
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            className="mt-2 px-3 py-1 bg-secondary text-white text-sm rounded hover:bg-secondary/90 transition-colors"
+          >
+            S'inscrire maintenant
+          </button>
+        </div>
       </div>
     );
   }

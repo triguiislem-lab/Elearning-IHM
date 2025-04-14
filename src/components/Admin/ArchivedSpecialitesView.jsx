@@ -291,6 +291,23 @@ const ArchivedSpecialitesView = ({ onClose, onSuccess, onError }) => {
                         </ul>
                       )}
                     </div>
+
+                    <div className="mt-6 flex justify-end">
+                      <button
+                        onClick={() =>
+                          handleRestoreSpecialite(selectedSpecialite.id)
+                        }
+                        disabled={
+                          processingSpecialiteId === selectedSpecialite.id
+                        }
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <MdRestore />
+                        {processingSpecialiteId === selectedSpecialite.id
+                          ? "Restauration..."
+                          : "Restaurer cette spécialité"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

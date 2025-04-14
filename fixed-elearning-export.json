@@ -1,0 +1,116 @@
+{
+  "courses": {
+    "m96eysfd46vpd5n7eq9": {
+      "createdAt": "2025-04-08T19:15:37.998Z",
+      "description": "Le développement mobile se définit par à la création et la diffusion d'applications portables, destinées aux entreprises ou aux particuliers, dans le respect d'une charte de fiabilité et de sécurité stricte.",
+      "disciplineId": "m9czuqh8vomj5tdpnzs",
+      "duration": "20",
+      "enrollments": {
+        "vyoSa72kr7bNMP5F04CmUpaFvjJ2": {
+          "enrolledAt": "2025-04-09T11:22:28.292Z",
+          "userId": "vyoSa72kr7bNMP5F04CmUpaFvjJ2"
+        }
+      },
+      "id": "m96eysfd46vpd5n7eq9",
+      "image": "https://localhost-academy.com/wp-content/uploads/2023/04/Les-criteres-a-prendre-en-compte-lors-du-choix-dune-formation-en-ligne-en-developpement-dapplication-mobile.png",
+      "instructorId": "wbQHT7es7OVUjKrwWxSuhgseVMq1",
+      "level": "Intermédiaire",
+      "modules": [
+        {
+          "courseId": "m96eysfd46vpd5n7eq9",
+          "createdAt": "2025-04-14T12:00:00.000Z",
+          "description": "Introduction aux concepts fondamentaux du développement mobile",
+          "id": "0",
+          "order": 0,
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Présentation des différentes plateformes de développement mobile",
+              "id": "resource_1744492800000_mobile_intro",
+              "title": "Introduction au développement mobile",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Documentation sur les principes de base du développement mobile",
+              "id": "resource_1744492800001_mobile_docs",
+              "title": "Documentation de référence",
+              "type": "document",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://developer.android.com/guide"
+            }
+          ],
+          "evaluations": {
+            "eval_1744492800000_mobile_quiz": {
+              "date": "2025-04-14T12:00:00.000Z",
+              "description": "Évaluation des connaissances sur les concepts de base du développement mobile",
+              "id": "eval_1744492800000_mobile_quiz",
+              "maxScore": 100,
+              "moduleId": "0",
+              "questions": [
+                {
+                  "correctAnswer": 2,
+                  "explanation": "Android et iOS sont les deux plateformes mobiles dominantes sur le marché",
+                  "id": "q_1744492800000_platforms",
+                  "options": [
+                    "Windows Phone et iOS",
+                    "Symbian et Android",
+                    "Android et iOS",
+                    "BlackBerry et Windows Phone"
+                  ],
+                  "question": "Quelles sont les deux plateformes mobiles dominantes actuellement?"
+                },
+                {
+                  "correctAnswer": 1,
+                  "explanation": "Java est le langage traditionnel pour le développement Android natif",
+                  "id": "q_1744492800001_android",
+                  "options": [
+                    "C#",
+                    "Java",
+                    "Python",
+                    "Ruby"
+                  ],
+                  "question": "Quel langage est traditionnellement utilisé pour le développement Android natif?"
+                }
+              ],
+              "score": 0,
+              "title": "Quiz sur les fondamentaux du développement mobile",
+              "type": "quiz"
+            }
+          },
+          "score": 0,
+          "status": "active",
+          "title": "Introduction au développement mobile",
+          "updatedAt": "2025-04-14T12:00:00.000Z"
+        },
+        {
+          "courseId": "m96eysfd46vpd5n7eq9",
+          "createdAt": "2025-04-14T12:00:00.000Z",
+          "description": "Apprendre à concevoir des interfaces utilisateur pour applications mobiles",
+          "id": "1",
+          "order": 1,
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Principes de conception d'interfaces mobiles",
+              "id": "resource_1744492800002_ui_design",
+              "title": "Design d'interfaces mobiles",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            }
+          ],
+          "status": "active",
+          "title": "Conception d'interfaces mobiles",
+          "updatedAt": "2025-04-14T12:00:00.000Z"
+        }
+      ],
+      "price": "30",
+      "specialiteId": "m9cztitrdr0z5wni5kk",
+      "title": "developpement mobile ",
+      "updatedAt": "2025-04-14T12:00:00.000Z"
+    }
+  }
+}

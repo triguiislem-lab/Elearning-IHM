@@ -49,28 +49,36 @@ const Footer = () => {
             </p>
             <div className="flex items-center justify-start gap-5 !mt-6">
               <a
-                href="#"
+                href="https://maps.google.com/?q=123+Avenue+de+l'Apprentissage,+Tunis,+1002"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-300 hover:text-secondary duration-200"
                 aria-label="Location"
               >
                 <HiLocationMarker className="text-3xl" />
               </a>
               <a
-                href="#"
+                href="https://www.instagram.com/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-300 hover:text-secondary duration-200"
                 aria-label="Instagram"
               >
                 <FaInstagram className="text-3xl" />
               </a>
               <a
-                href="#"
+                href="https://www.facebook.com/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-300 hover:text-secondary duration-200"
                 aria-label="Facebook"
               >
                 <FaFacebook className="text-3xl" />
               </a>
               <a
-                href="#"
+                href="https://www.linkedin.com/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-gray-300 hover:text-secondary duration-200"
                 aria-label="LinkedIn"
               >
@@ -192,24 +200,24 @@ const Footer = () => {
             © 2024 E-Learning. Tous droits réservés.
           </span>
           <div className="flex space-x-4 mt-4 md:mt-0">
-            <a
-              href="#"
+            <Link
+              to="/privacy-policy"
               className="text-sm text-gray-400 hover:text-white transition-colors duration-300"
             >
               Politique de confidentialité
-            </a>
-            <a
-              href="#"
+            </Link>
+            <Link
+              to="/terms-of-service"
               className="text-sm text-gray-400 hover:text-white transition-colors duration-300"
             >
               Conditions d'utilisation
-            </a>
-            <a
-              href="#"
+            </Link>
+            <Link
+              to="/cookie-policy"
               className="text-sm text-gray-400 hover:text-white transition-colors duration-300"
             >
               Cookies
-            </a>
+            </Link>
           </div>
         </div>
       </div>

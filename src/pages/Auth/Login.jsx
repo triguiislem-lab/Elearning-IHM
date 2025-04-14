@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { useAuth } from "../../hooks/useAuth";
@@ -11,58 +11,131 @@ const Login = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { getDashboardPath } = useAuth();
+
+  // Load remembered email on component mount
+  useEffect(() => {
+    const rememberedEmail = localStorage.getItem("rememberedEmail");
+    const hasRememberedCredentials = localStorage.getItem(
+      "hasRememberedCredentials"
+    );
+
+    if (rememberedEmail && hasRememberedCredentials) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   // Fonction auxiliaire pour rediriger l'utilisateur en fonction de son rôle
   const redirectBasedOnRole = async (userId) => {
     try {
       const database = getDatabase();
 
-      // Vérifier d'abord dans le chemin standardisé
-      const userRef = ref(database, `elearning/users/${userId}`);
-      const snapshot = await get(userRef);
-      let userData = snapshot.val();
+      // Vérifier dans tous les chemins possibles pour trouver le rôle de l'utilisateur
+      let userData = null;
+      let role = null;
 
-      // Si non trouvé, vérifier dans le chemin hérité
-      if (!userData) {
+      // 1. Vérifier d'abord dans le chemin standardisé (elearning/users)
+      const standardUserRef = ref(database, `elearning/users/${userId}`);
+      const standardSnapshot = await get(standardUserRef);
+
+      if (standardSnapshot.exists()) {
+        userData = standardSnapshot.val();
+        role = userData.role || userData.userType;
+      }
+
+      // 2. Si non trouvé, vérifier dans Elearning/Administrateurs
+      if (!role) {
+        const adminRef = ref(database, `Elearning/Administrateurs/${userId}`);
+        const adminSnapshot = await get(adminRef);
+
+        if (adminSnapshot.exists()) {
+          userData = adminSnapshot.val();
+          role = "admin";
+        }
+      }
+
+      // 3. Si non trouvé, vérifier dans Elearning/Formateurs
+      if (!role) {
+        const instructorRef = ref(database, `Elearning/Formateurs/${userId}`);
+        const instructorSnapshot = await get(instructorRef);
+
+        if (instructorSnapshot.exists()) {
+          userData = instructorSnapshot.val();
+          role = "instructor";
+        }
+      }
+
+      // 4. Si non trouvé, vérifier dans Elearning/Apprenants
+      if (!role) {
+        const studentRef = ref(database, `Elearning/Apprenants/${userId}`);
+        const studentSnapshot = await get(studentRef);
+
+        if (studentSnapshot.exists()) {
+          userData = studentSnapshot.val();
+          role = "student";
+        }
+      }
+
+      // 5. Si non trouvé, vérifier dans Elearning/Utilisateurs
+      if (!role) {
+        const legacyUserRef = ref(database, `Elearning/Utilisateurs/${userId}`);
+        const legacySnapshot = await get(legacyUserRef);
+
+        if (legacySnapshot.exists()) {
+          userData = legacySnapshot.val();
+          role = userData.userType || "student";
+        }
+      }
+
+      // 6. Si non trouvé, vérifier dans le chemin hérité users
+      if (!role) {
         const legacyUserRef = ref(database, `users/${userId}`);
         const legacySnapshot = await get(legacyUserRef);
-        userData = legacySnapshot.val();
+
+        if (legacySnapshot.exists()) {
+          userData = legacySnapshot.val();
+          role = userData.userType || userData.role || "student";
+        }
       }
 
-      if (!userData) {
-        // Si toujours pas de données utilisateur trouvées, utiliser la méthode par défaut
-        const defaultPath = getDashboardPath();
-        navigate(defaultPath, { replace: true });
-        return;
+      // Si toujours pas de rôle trouvé, utiliser student par défaut
+      if (!role) {
+        role = "student";
       }
-
-      // Déterminer le rôle et rediriger en conséquence
-      const role = userData.role || userData.userType || "student";
+      let redirectPath = "/";
 
       switch (role.toLowerCase()) {
         case "admin":
-          navigate("/admin/dashboard", { replace: true });
+        case "administrateur":
+          redirectPath = "/admin/dashboard";
           break;
         case "instructor":
         case "formateur":
-          navigate("/instructor/courses", { replace: true });
+          redirectPath = "/instructor/courses";
           break;
         case "student":
         case "etudiant":
-          navigate("/student/enrollments", { replace: true });
+          redirectPath = "/student/enrollments";
           break;
         default:
           // Fallback vers la page d'accueil
-          navigate("/", { replace: true });
+          redirectPath = "/";
       }
+
+      console.log("Redirecting to:", redirectPath, "with role:", role);
+
+      // Use window.location.replace instead of href to prevent adding to browser history
+      // This ensures the login page isn't in the history stack and forces a full page reload
+      window.location.replace(redirectPath);
     } catch (error) {
       console.error("Erreur lors de la redirection:", error);
-      // En cas d'erreur, utiliser la redirection par défaut
-      const defaultPath = getDashboardPath();
-      navigate(defaultPath, { replace: true });
+      // En cas d'erreur, rediriger vers la page d'accueil
+      console.log("Error fallback redirect to: /");
+      window.location.replace("/");
     }
   };
 
@@ -73,6 +146,19 @@ const Login = () => {
 
     try {
       const auth = getAuth();
+
+      // Set persistence based on rememberMe option
+      if (rememberMe) {
+        // Save credentials in localStorage
+        localStorage.setItem("rememberedEmail", email);
+        // We don't store the actual password for security reasons
+        localStorage.setItem("hasRememberedCredentials", "true");
+      } else {
+        // Clear any saved credentials
+        localStorage.removeItem("rememberedEmail");
+        localStorage.removeItem("hasRememberedCredentials");
+      }
+
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
@@ -86,6 +172,7 @@ const Login = () => {
       } else {
         // Rediriger en fonction du rôle
         await redirectBasedOnRole(user.uid);
+        // No need to reload - the redirectBasedOnRole function already uses window.location.href
       }
     } catch (error) {
       console.error("Erreur de connexion:", error);
@@ -191,7 +278,9 @@ const Login = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-secondary focus:ring-secondary/20 border-gray-300 rounded"
                 />
                 <label
                   htmlFor="remember-me"
@@ -201,9 +290,9 @@ const Login = () => {
                 </label>
               </div>
               <div className="text-sm">
-                <a href="#" className="text-link">
+                <Link to="/reset-password" className="text-link">
                   Mot de passe oublié ?
-                </a>
+                </Link>
               </div>
             </div>
 

@@ -23,29 +23,53 @@ const DatabaseCleanup = () => {
       }
 
       try {
-        const adminRef = ref(
+        // Check in the standardized lowercase path first
+        const standardAdminRef = ref(
           database,
-          `Elearning/Administrateurs/${auth.currentUser.uid}`
+          `elearning/users/${auth.currentUser.uid}`
         );
-        const adminSnapshot = await get(adminRef);
+        const standardAdminSnapshot = await get(standardAdminRef);
 
-        if (adminSnapshot.exists()) {
+        if (
+          standardAdminSnapshot.exists() &&
+          (standardAdminSnapshot.val().role === "admin" ||
+            standardAdminSnapshot.val().userType === "administrateur")
+        ) {
           setIsAdmin(true);
         } else {
-          // Vérifier également dans Utilisateurs
-          const userRef = ref(
+          // Check in legacy capitalized paths as fallback
+          const legacyAdminRef = ref(
             database,
-            `Elearning/Utilisateurs/${auth.currentUser.uid}`
+            `Elearning/Administrateurs/${auth.currentUser.uid}`
           );
-          const userSnapshot = await get(userRef);
+          const legacyAdminSnapshot = await get(legacyAdminRef);
 
-          if (
-            userSnapshot.exists() &&
-            userSnapshot.val().userType === "administrateur"
-          ) {
+          if (legacyAdminSnapshot.exists()) {
             setIsAdmin(true);
+            // Consider migrating this admin to the standardized path
+            console.log(
+              "Admin found in legacy path. Consider running migration."
+            );
           } else {
-            navigate("/");
+            // Check in legacy Users collection
+            const legacyUserRef = ref(
+              database,
+              `Elearning/Utilisateurs/${auth.currentUser.uid}`
+            );
+            const legacyUserSnapshot = await get(legacyUserRef);
+
+            if (
+              legacyUserSnapshot.exists() &&
+              legacyUserSnapshot.val().userType === "administrateur"
+            ) {
+              setIsAdmin(true);
+              // Consider migrating this admin to the standardized path
+              console.log(
+                "Admin found in legacy users path. Consider running migration."
+              );
+            } else {
+              navigate("/");
+            }
           }
         }
       } catch (error) {

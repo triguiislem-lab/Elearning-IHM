@@ -805,7 +805,8 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 				}));
 
 				if (evaluationsArray.length > 0) {
-					moduleData.evaluationsArray = evaluationsArray;
+					// Remplacer l'objet evaluations par le tableau normalisé
+					moduleData.evaluations = evaluationsArray;
 				}
 			}
 
@@ -856,8 +857,26 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 						evaluations: moduleData.evaluations || {}
 					};
 
-					// Appliquer la même logique de récupération des ressources et évaluations
-					// (Code similaire à la tentative 1, mais je ne le duplique pas pour la lisibilité)
+					// Standardiser les évaluations si nécessaire
+					if (moduleData.evaluations && typeof moduleData.evaluations === 'object' && !Array.isArray(moduleData.evaluations)) {
+						const evaluationsArray = Object.entries(moduleData.evaluations).map(([id, evaluation]) => ({
+							id,
+							...evaluation
+						}));
+
+						if (evaluationsArray.length > 0) {
+							// Remplacer l'objet evaluations par le tableau normalisé
+							moduleData.evaluations = evaluationsArray;
+						}
+					}
+
+					// Standardiser les ressources si nécessaire
+					if (!Array.isArray(moduleData.resources) && typeof moduleData.resources === 'object') {
+						moduleData.resources = Object.entries(moduleData.resources).map(([id, resource]) => ({
+							id,
+							...resource
+						}));
+					}
 
 					// Mettre en cache et retourner
 					setCachedData(cacheKey, moduleData);
@@ -875,7 +894,7 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 			const moduleData = altModuleSnapshot.val();
 
 			// Standardiser et retourner
-			const standardizedModule = {
+			let standardizedModule = {
 				...moduleData,
 				id: moduleId,
 				courseId: courseId,
@@ -884,6 +903,27 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 				resources: moduleData.resources || [],
 				evaluations: moduleData.evaluations || {}
 			};
+
+			// Standardiser les évaluations si nécessaire
+			if (standardizedModule.evaluations && typeof standardizedModule.evaluations === 'object' && !Array.isArray(standardizedModule.evaluations)) {
+				const evaluationsArray = Object.entries(standardizedModule.evaluations).map(([id, evaluation]) => ({
+					id,
+					...evaluation
+				}));
+
+				if (evaluationsArray.length > 0) {
+					// Remplacer l'objet evaluations par le tableau normalisé
+					standardizedModule.evaluations = evaluationsArray;
+				}
+			}
+
+			// Standardiser les ressources si nécessaire
+			if (!Array.isArray(standardizedModule.resources) && typeof standardizedModule.resources === 'object') {
+				standardizedModule.resources = Object.entries(standardizedModule.resources).map(([id, resource]) => ({
+					id,
+					...resource
+				}));
+			}
 
 			// Mettre en cache et retourner
 			setCachedData(cacheKey, standardizedModule);
@@ -1297,11 +1337,28 @@ export const testFirebasePaths = async () => {
 
 // Calculate course score based on module scores
 export const calculateCourseScore = (modules) => {
-  // S'assurer que modules est un tableau non vide
-  if (!modules || !Array.isArray(modules) || modules.length === 0) return 0;
+  // Handle case where modules is undefined or null
+  if (!modules) return 0;
+
+  // Handle both array and object formats
+  let moduleArray = [];
+
+  if (Array.isArray(modules)) {
+    moduleArray = modules;
+  } else if (typeof modules === 'object') {
+    // Convert object to array, skipping boolean values
+    moduleArray = Object.entries(modules)
+      .filter(([_, module]) => typeof module !== 'boolean')
+      .map(([id, module]) => ({ id, ...module }));
+  } else {
+    return 0;
+  }
+
+  // If no valid modules, return 0
+  if (moduleArray.length === 0) return 0;
 
   // Filtrer les modules qui ont un score valide
-  const modulesWithScores = modules.filter(module =>
+  const modulesWithScores = moduleArray.filter(module =>
     module && typeof module.score === 'number' && !isNaN(module.score)
   );
 
@@ -1317,11 +1374,28 @@ export const calculateCourseScore = (modules) => {
 
 // Calculate course progress percentage
 export const calculateCourseProgress = (modules) => {
-  // S'assurer que modules est un tableau non vide
-  if (!modules || !Array.isArray(modules) || modules.length === 0) return 0;
+  // Handle case where modules is undefined or null
+  if (!modules) return 0;
+
+  // Handle both array and object formats
+  let moduleArray = [];
+
+  if (Array.isArray(modules)) {
+    moduleArray = modules;
+  } else if (typeof modules === 'object') {
+    // Convert object to array, skipping boolean values
+    moduleArray = Object.entries(modules)
+      .filter(([_, module]) => typeof module !== 'boolean')
+      .map(([id, module]) => ({ id, ...module }));
+  } else {
+    return 0;
+  }
+
+  // If no valid modules, return 0
+  if (moduleArray.length === 0) return 0;
 
   // Compter les modules complétés
-  const completedModules = modules.filter(
+  const completedModules = moduleArray.filter(
     module => module && (
       module.status === 'completed' ||
       module.completed === true ||
@@ -1330,11 +1404,11 @@ export const calculateCourseProgress = (modules) => {
   ).length;
 
   // Calculer le pourcentage de progression
-  const percentage = (completedModules / modules.length) * 100;
+  const percentage = (completedModules / moduleArray.length) * 100;
 
   // Si aucun module n'est complet mais il y a un champ progress moyen, utiliser celui-ci
   if (percentage === 0) {
-    const modulesWithProgress = modules.filter(module =>
+    const modulesWithProgress = moduleArray.filter(module =>
       module && typeof module.progress === 'number' && !isNaN(module.progress)
     );
 
@@ -1353,11 +1427,28 @@ export const calculateCourseProgress = (modules) => {
 
 // Check if course is completed
 export const isCourseCompleted = (modules) => {
-  // S'assurer que modules est un tableau non vide
-  if (!modules || !Array.isArray(modules) || modules.length === 0) return false;
+  // Handle case where modules is undefined or null
+  if (!modules) return false;
+
+  // Handle both array and object formats
+  let moduleArray = [];
+
+  if (Array.isArray(modules)) {
+    moduleArray = modules;
+  } else if (typeof modules === 'object') {
+    // Convert object to array, skipping boolean values
+    moduleArray = Object.entries(modules)
+      .filter(([_, module]) => typeof module !== 'boolean')
+      .map(([id, module]) => ({ id, ...module }));
+  } else {
+    return false;
+  }
+
+  // If no valid modules, return false
+  if (moduleArray.length === 0) return false;
 
   // Si tous les modules sont complétés, le cours est considéré comme complété
-  return modules.every(module =>
+  return moduleArray.every(module =>
     module && (
       module.status === 'completed' ||
       module.completed === true ||

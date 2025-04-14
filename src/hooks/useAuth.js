@@ -12,7 +12,7 @@ export const useAuth = () => {
   // Function to normalize user role
   const normalizeRole = (userData) => {
     if (!userData) return null;
-    
+
     if (userData.role) {
       return userData.role.toLowerCase();
     }
@@ -49,11 +49,14 @@ export const useAuth = () => {
       }
 
       const database = getDatabase();
-      const userRef = ref(database, `elearning/users/${firebaseUser.uid}`);
-      const snapshot = await get(userRef);
 
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
+      // Check standardized path first (lowercase)
+      const standardUserRef = ref(database, `elearning/users/${firebaseUser.uid}`);
+      const standardSnapshot = await get(standardUserRef);
+
+      if (standardSnapshot.exists()) {
+        // User found in standardized path
+        const userData = standardSnapshot.val();
         const normalizedRole = normalizeRole(userData);
 
         if (!normalizedRole) {
@@ -64,14 +67,79 @@ export const useAuth = () => {
           ...firebaseUser,
           ...userData,
           normalizedRole,
-          id: firebaseUser.uid
+          id: firebaseUser.uid,
+          dataPath: 'standardized' // Mark as coming from standardized path
         };
 
         setCachedData(cacheKey, userInfo);
         setUser(userInfo);
         setUserRole(normalizedRole);
+        return; // Exit early if found in standardized path
+      }
+
+      // Check legacy paths if not found in standardized path
+      let userData = null;
+      let dataSource = null;
+
+      // Check in Elearning/Administrateurs
+      const adminRef = ref(database, `Elearning/Administrateurs/${firebaseUser.uid}`);
+      const adminSnapshot = await get(adminRef);
+
+      if (adminSnapshot.exists()) {
+        userData = adminSnapshot.val();
+        userData.role = 'admin'; // Ensure role is set
+        dataSource = 'legacy_admin';
       } else {
-        // Create default user profile with proper role
+        // Check in Elearning/Formateurs
+        const instructorRef = ref(database, `Elearning/Formateurs/${firebaseUser.uid}`);
+        const instructorSnapshot = await get(instructorRef);
+
+        if (instructorSnapshot.exists()) {
+          userData = instructorSnapshot.val();
+          userData.role = 'instructor'; // Ensure role is set
+          dataSource = 'legacy_instructor';
+        } else {
+          // Check in Elearning/Apprenants
+          const studentRef = ref(database, `Elearning/Apprenants/${firebaseUser.uid}`);
+          const studentSnapshot = await get(studentRef);
+
+          if (studentSnapshot.exists()) {
+            userData = studentSnapshot.val();
+            userData.role = 'student'; // Ensure role is set
+            dataSource = 'legacy_student';
+          } else {
+            // Check in Elearning/Utilisateurs
+            const userRef = ref(database, `Elearning/Utilisateurs/${firebaseUser.uid}`);
+            const userSnapshot = await get(userRef);
+
+            if (userSnapshot.exists()) {
+              userData = userSnapshot.val();
+              dataSource = 'legacy_user';
+            }
+          }
+        }
+      }
+
+      if (userData) {
+        // User found in one of the legacy paths
+        const normalizedRole = normalizeRole(userData);
+
+        const userInfo = {
+          ...firebaseUser,
+          ...userData,
+          normalizedRole: normalizedRole || 'student',
+          id: firebaseUser.uid,
+          dataPath: dataSource // Mark the source of the data
+        };
+
+        setCachedData(cacheKey, userInfo);
+        setUser(userInfo);
+        setUserRole(normalizedRole || 'student');
+
+        // Log that user was found in legacy path
+        console.log(`User found in legacy path: ${dataSource}. Consider running database standardization.`);
+      } else {
+        // User not found in any path, create default profile
         const defaultUser = {
           ...firebaseUser,
           id: firebaseUser.uid,
@@ -79,7 +147,8 @@ export const useAuth = () => {
           normalizedRole: 'student',
           firstName: '',
           lastName: '',
-          email: firebaseUser.email
+          email: firebaseUser.email,
+          dataPath: 'default'
         };
 
         setUser(defaultUser);
@@ -114,7 +183,7 @@ export const useAuth = () => {
 
   const getDashboardPath = useCallback(() => {
     if (!userRole) return '/login';
-    
+
     switch (userRole.toLowerCase()) {
       case 'admin':
         return '/admin/dashboard';

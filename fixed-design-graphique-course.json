@@ -1,0 +1,172 @@
+{
+  "courses": {
+    "m98vtazis48sfep42qj": {
+      "createdAt": "2025-04-09T10:03:03.191Z",
+      "description": "La formation Design graphique Tunisie englobe tous les cours ultimes de graphisme qui couvre Photoshop, Illustrator, Indesign …\n\nQue vous soyez graphiste ou travailliez dans des secteurs connexes (développeur web, marketeur, référent SEO, community manager, imprimeur, architecte d'intérieur, etc.), la connaissance du graphisme et du design est devenue essentielle dans de nombreux domaines liés à l'informatique, au marketing et à la communication.",
+      "disciplineId": "m9czuqh8vomj5tdpnzs",
+      "duration": "30",
+      "enrollments": {
+        "vyoSa72kr7bNMP5F04CmUpaFvjJ2": {
+          "enrolledAt": "2025-04-09T10:57:43.794Z",
+          "userId": "vyoSa72kr7bNMP5F04CmUpaFvjJ2"
+        }
+      },
+      "id": "m98vtazis48sfep42qj",
+      "image": "https://cdn-ilcfgpb.nitrocdn.com/EkPFlixwIHgIctOLFAYYrxNZsZQBTTiQ/assets/images/optimized/rev-ff780a7/www.proservices-training-company.com/wp-content/uploads/2024/10/formation-design-graphique-760x424.webp",
+      "instructorId": "wbQHT7es7OVUjKrwWxSuhgseVMq1",
+      "level": "Intermédiaire",
+      "modules": [
+        {
+          "courseId": "m98vtazis48sfep42qj",
+          "createdAt": "2025-04-08T19:24:44.428Z",
+          "description": "Introduction aux principes fondamentaux du design graphique et présentation des outils essentiels",
+          "evaluations": {
+            "e1744192983191_mzing4du5sq": {
+              "date": "2025-04-09T10:02:47.100Z",
+              "description": "Évaluation des connaissances de base en design graphique",
+              "id": "e1744192983191_mzing4du5sq",
+              "maxScore": 100,
+              "moduleId": "0",
+              "questions": [
+                {
+                  "correctAnswer": 0,
+                  "explanation": "Les principes fondamentaux du design incluent l'équilibre, le contraste, la hiérarchie, etc.",
+                  "id": "q_1744192961598_3y48e4ldxeq",
+                  "options": [
+                    "Les principes fondamentaux du design",
+                    "Les techniques avancées de retouche photo",
+                    "La programmation en CSS",
+                    "Le marketing digital"
+                  ],
+                  "question": "Quel est le sujet principal de ce module?"
+                },
+                {
+                  "correctAnswer": 2,
+                  "explanation": "Adobe Photoshop, Illustrator et InDesign sont les trois logiciels principaux de la suite Adobe pour le design graphique",
+                  "id": "q_1744492800006_adobe",
+                  "options": [
+                    "Word, Excel, PowerPoint",
+                    "Premiere Pro, After Effects, Audition",
+                    "Photoshop, Illustrator, InDesign",
+                    "Dreamweaver, Flash, Fireworks"
+                  ],
+                  "question": "Quels sont les trois logiciels principaux de la suite Adobe pour le design graphique?"
+                }
+              ],
+              "score": 0,
+              "title": "Quiz sur les fondamentaux du design graphique",
+              "type": "quiz"
+            }
+          },
+          "id": "0",
+          "order": 0,
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Introduction aux principes fondamentaux du design graphique",
+              "id": "resource_1744492800007_design_intro",
+              "title": "Introduction au design graphique",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=YqQx75OPRa0"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Guide des principes fondamentaux du design graphique",
+              "id": "resource_1744492800008_design_guide",
+              "title": "Guide du design graphique",
+              "type": "document",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.canva.com/learn/design-elements-principles/"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Tutoriel d'introduction à Adobe Photoshop",
+              "id": "resource_1744492800009_photoshop",
+              "title": "Introduction à Photoshop",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=IyR_uYsRdPs"
+            }
+          ],
+          "score": 0,
+          "status": "active",
+          "title": "Fondamentaux du design graphique",
+          "updatedAt": "2025-04-14T12:00:00.000Z"
+        },
+        {
+          "courseId": "m98vtazis48sfep42qj",
+          "createdAt": "2025-04-14T12:00:00.000Z",
+          "description": "Maîtriser les fonctionnalités essentielles d'Adobe Photoshop pour la retouche d'images",
+          "id": "1",
+          "order": 1,
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Tutoriel complet sur les outils de base de Photoshop",
+              "id": "resource_1744492800010_photoshop_tools",
+              "title": "Les outils essentiels de Photoshop",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=pFyOznL9UvA"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Guide pratique pour la retouche photo avec Photoshop",
+              "id": "resource_1744492800011_photo_editing",
+              "title": "Techniques de retouche photo",
+              "type": "document",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://helpx.adobe.com/photoshop/using/retouching-repairing-images.html"
+            }
+          ],
+          "evaluations": {
+            "eval_1744492800003_photoshop_quiz": {
+              "date": "2025-04-14T12:00:00.000Z",
+              "description": "Évaluation des connaissances sur Adobe Photoshop",
+              "id": "eval_1744492800003_photoshop_quiz",
+              "maxScore": 100,
+              "moduleId": "1",
+              "questions": [
+                {
+                  "correctAnswer": 3,
+                  "explanation": "L'outil Lasso permet de sélectionner des zones de manière libre",
+                  "id": "q_1744492800007_lasso",
+                  "options": [
+                    "Pour dessiner des formes",
+                    "Pour appliquer des filtres",
+                    "Pour ajuster les couleurs",
+                    "Pour faire des sélections à main levée"
+                  ],
+                  "question": "À quoi sert l'outil Lasso dans Photoshop?"
+                },
+                {
+                  "correctAnswer": 1,
+                  "explanation": "Les calques permettent de travailler sur différents éléments de l'image séparément",
+                  "id": "q_1744492800008_layers",
+                  "options": [
+                    "Pour ajouter des effets spéciaux",
+                    "Pour organiser et travailler sur différents éléments séparément",
+                    "Pour exporter des images",
+                    "Pour créer des animations"
+                  ],
+                  "question": "Quelle est la fonction principale des calques dans Photoshop?"
+                }
+              ],
+              "score": 0,
+              "title": "Quiz sur Adobe Photoshop",
+              "type": "quiz"
+            }
+          },
+          "status": "active",
+          "title": "Maîtriser Adobe Photoshop",
+          "updatedAt": "2025-04-14T12:00:00.000Z"
+        }
+      ],
+      "price": "250",
+      "specialiteId": "m9cztitrdr0z5wni5kk",
+      "title": "Formation design graphique",
+      "updatedAt": "2025-04-14T12:00:00.000Z"
+    }
+  }
+}

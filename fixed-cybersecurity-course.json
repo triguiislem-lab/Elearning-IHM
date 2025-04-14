@@ -1,0 +1,160 @@
+{
+  "courses": {
+    "m9d64bhn1t024czv61a": {
+      "description": "Cybersecurity is the practice of protecting systems, networks, and programs from digital attacks. These cyberattacks are usually aimed at accessing, changing, or destroying sensitive information; extorting money from users; or interrupting normal business processes.",
+      "disciplineId": "m9czuqh8vomj5tdpnzs",
+      "duration": "100",
+      "enrollments": {
+        "vyoSa72kr7bNMP5F04CmUpaFvjJ2": {
+          "enrolledAt": "2025-04-11T21:41:11.684Z",
+          "userId": "vyoSa72kr7bNMP5F04CmUpaFvjJ2"
+        }
+      },
+      "image": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRp9NcyMSce9Df4G1uJcNGhvx0smVsvO42EMKWbRFfzWw&s",
+      "instructorId": "wbQHT7es7OVUjKrwWxSuhgseVMq1",
+      "level": "Avancé",
+      "modules": [
+        {
+          "courseId": "m9d64bhn1t024czv61a",
+          "createdAt": "2025-04-11T19:25:13.220Z",
+          "description": "Introduction aux principes fondamentaux de la cybersécurité",
+          "id": "-ONaJ2ZDtS_L3srJZVGQ",
+          "order": 1,
+          "status": "active",
+          "title": "Fondamentaux de la cybersécurité",
+          "updatedAt": "2025-04-14T12:00:00.000Z",
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Introduction aux concepts de base de la cybersécurité",
+              "id": "resource_1744492800003_cyber_intro",
+              "title": "Introduction à la cybersécurité",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=inWWhr5tnEA"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Documentation sur les principes de base de la cybersécurité",
+              "id": "resource_1744492800004_cyber_docs",
+              "title": "Documentation de référence",
+              "type": "document",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.cisa.gov/cybersecurity"
+            }
+          ],
+          "evaluations": {
+            "eval_1744492800001_cyber_quiz": {
+              "date": "2025-04-14T12:00:00.000Z",
+              "description": "Évaluation des connaissances sur les concepts de base de la cybersécurité",
+              "id": "eval_1744492800001_cyber_quiz",
+              "maxScore": 100,
+              "moduleId": "-ONaJ2ZDtS_L3srJZVGQ",
+              "questions": [
+                {
+                  "correctAnswer": 3,
+                  "explanation": "La confidentialité, l'intégrité et la disponibilité sont les trois piliers de la cybersécurité",
+                  "id": "q_1744492800002_cia",
+                  "options": [
+                    "Confidentialité, Innovation, Accessibilité",
+                    "Cryptographie, Intégrité, Authentification",
+                    "Contrôle, Isolation, Autorisation",
+                    "Confidentialité, Intégrité, Disponibilité"
+                  ],
+                  "question": "Quels sont les trois piliers de la cybersécurité (triade CIA)?"
+                },
+                {
+                  "correctAnswer": 2,
+                  "explanation": "Un pare-feu est conçu pour bloquer les accès non autorisés tout en permettant les communications autorisées",
+                  "id": "q_1744492800003_firewall",
+                  "options": [
+                    "Un logiciel antivirus",
+                    "Un système de détection d'intrusion",
+                    "Un système qui filtre le trafic réseau",
+                    "Un logiciel de chiffrement"
+                  ],
+                  "question": "Qu'est-ce qu'un pare-feu (firewall)?"
+                }
+              ],
+              "score": 0,
+              "title": "Quiz sur les fondamentaux de la cybersécurité",
+              "type": "quiz"
+            }
+          }
+        },
+        {
+          "courseId": "m9d64bhn1t024czv61a",
+          "createdAt": "2025-04-11T19:25:46.516Z",
+          "description": "Comprendre les différents types de menaces et attaques informatiques",
+          "id": "-ONaJAgekPsGIMJrHpUL",
+          "order": 2,
+          "status": "active",
+          "title": "Menaces et attaques informatiques",
+          "updatedAt": "2025-04-14T12:00:00.000Z",
+          "resources": [
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Présentation des différents types d'attaques informatiques",
+              "id": "resource_1744492800005_attacks",
+              "title": "Types d'attaques informatiques",
+              "type": "video",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.youtube.com/watch?v=Dk-ZqQ-bfy4"
+            },
+            {
+              "createdAt": "2025-04-14T12:00:00.000Z",
+              "description": "Guide sur les méthodes de protection contre les attaques courantes",
+              "id": "resource_1744492800006_protection",
+              "title": "Protection contre les attaques",
+              "type": "document",
+              "updatedAt": "2025-04-14T12:00:00.000Z",
+              "url": "https://www.sans.org/security-resources/"
+            }
+          ],
+          "evaluations": {
+            "eval_1744492800002_attacks_quiz": {
+              "date": "2025-04-14T12:00:00.000Z",
+              "description": "Évaluation des connaissances sur les différents types d'attaques informatiques",
+              "id": "eval_1744492800002_attacks_quiz",
+              "maxScore": 100,
+              "moduleId": "-ONaJAgekPsGIMJrHpUL",
+              "questions": [
+                {
+                  "correctAnswer": 1,
+                  "explanation": "Une attaque par déni de service vise à rendre un service indisponible",
+                  "id": "q_1744492800004_dos",
+                  "options": [
+                    "Une attaque qui vole des données sensibles",
+                    "Une attaque qui rend un service indisponible",
+                    "Une attaque qui modifie des données",
+                    "Une attaque qui usurpe l'identité d'un utilisateur"
+                  ],
+                  "question": "Qu'est-ce qu'une attaque par déni de service (DoS)?"
+                },
+                {
+                  "correctAnswer": 0,
+                  "explanation": "Le phishing est une technique d'ingénierie sociale visant à obtenir des informations sensibles",
+                  "id": "q_1744492800005_phishing",
+                  "options": [
+                    "Une technique pour obtenir des informations sensibles en se faisant passer pour une entité de confiance",
+                    "Une technique pour exploiter des failles dans les logiciels",
+                    "Une technique pour intercepter des communications réseau",
+                    "Une technique pour contourner l'authentification"
+                  ],
+                  "question": "Qu'est-ce que le phishing?"
+                }
+              ],
+              "score": 0,
+              "title": "Quiz sur les attaques informatiques",
+              "type": "quiz"
+            }
+          }
+        }
+      ],
+      "price": "1000",
+      "specialiteId": "m9cztitrdr0z5wni5kk",
+      "title": "cyber security",
+      "updatedAt": "2025-04-14T12:00:00.000Z"
+    }
+  }
+}
