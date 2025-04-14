@@ -1,0 +1,89 @@
+{
+	"rules": {
+		".read": "auth != null",
+		".write": "auth != null",
+		"elearning": {
+			"courses": {
+				".indexOn": [
+					"instructorId",
+					"specialiteId",
+					"disciplineId",
+					"createdAt",
+					"updatedAt"
+				],
+				"$courseId": {
+					".indexOn": ["instructorId", "specialiteId", "disciplineId"],
+					"modules": {
+						".indexOn": ["order", "createdAt", "updatedAt"]
+					}
+				}
+			},
+			"users": {
+				".indexOn": ["email", "role", "userType"],
+				"$userId": {
+					"courses": {
+						".indexOn": ["createdAt", "updatedAt"]
+					}
+				}
+			},
+			"enrollments": {
+				"byCourse": {
+					"$courseId": {
+						".indexOn": ["studentId", "enrollmentDate", "status"]
+					}
+				},
+				"byStudent": {
+					"$studentId": {
+						".indexOn": ["courseId", "enrollmentDate", "status"]
+					}
+				}
+			},
+			"specialites": {
+				".indexOn": ["name", "createdAt"],
+				"$specialiteId": {
+					"courses": {
+						".indexOn": ["updatedAt"]
+					}
+				}
+			},
+			"disciplines": {
+				".indexOn": ["name", "specialiteId", "createdAt"],
+				"$disciplineId": {
+					"courses": {
+						".indexOn": ["updatedAt"]
+					}
+				}
+			},
+			"messages": {
+				".indexOn": ["senderId", "recipientId", "timestamp", "read"]
+			}
+		},
+		"Elearning": {
+			"Courses": {
+				".indexOn": ["formateur", "specialite", "discipline", "dateCreation"],
+				"$courseId": {
+					"Modules": {
+						".indexOn": ["ordre", "dateCreation"]
+					}
+				}
+			},
+			"Users": {
+				".indexOn": ["email", "role", "userType"]
+			},
+			"Enrollments": {
+				"$courseId": {
+					".indexOn": ["studentId", "enrollmentDate", "status"]
+				}
+			},
+			"Specialites": {
+				".indexOn": ["nom"]
+			},
+			"Disciplines": {
+				".indexOn": ["nom", "specialiteId"]
+			},
+			"Messages": {
+				".indexOn": ["senderId", "recipientId", "timestamp", "read"]
+			}
+		}
+	}
+}
