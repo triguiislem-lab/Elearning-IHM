@@ -69,59 +69,57 @@ const ModulePage = () => {
         // Chercher le vrai ID du module si c'est un index
         let realModuleId = moduleId;
 
-        // Gérer le cas spécial où moduleId est "0" mais peut être un ID valide
-        // et pas nécessairement un index
-        if (moduleId === "0") {
-          // D'abord, essayons de vérifier si un module avec l'ID "0" existe vraiment
-          try {
-            const directModuleRef = ref(
-              database,
-              `elearning/courses/${courseId}/modules/0`
-            );
-            const directSnapshot = await get(directModuleRef);
+        // Récupérer tous les modules disponibles directement depuis la base de données
+        const modulesRef = ref(
+          database,
+          `elearning/courses/${courseId}/modules`
+        );
+        const modulesSnapshot = await get(modulesRef);
 
-            if (directSnapshot.exists()) {
-              console.log('Module avec ID "0" trouvé directement');
-              realModuleId = "0"; // On garde l'ID tel quel
-            }
-            // Si nous ne trouvons pas de module avec ID "0", il se peut que ce soit un index
-            else if (
-              course.modules &&
-              Array.isArray(course.modules) &&
-              course.modules.length > 0
-            ) {
-              // Utiliser l'ID du premier module (index 0)
-              realModuleId = course.modules[0].id;
-              console.log(
-                `Module avec ID "0" non trouvé, utilisation du premier module (ID: ${realModuleId})`
-              );
-            }
-          } catch (err) {
-            console.warn(
-              "Erreur lors de la vérification du module avec ID 0:",
-              err
+        let availableModules = [];
+        if (modulesSnapshot.exists()) {
+          const modulesData = modulesSnapshot.val();
+
+          // Convertir les modules en tableau
+          if (typeof modulesData === "object") {
+            Object.entries(modulesData).forEach(([id, module]) => {
+              availableModules.push({
+                id,
+                title: module.title || "Module sans titre",
+                order: module.order || 0,
+              });
+            });
+
+            // Trier les modules par ordre si disponible
+            availableModules.sort((a, b) => a.order - b.order);
+            console.log("Modules disponibles:", availableModules);
+          }
+        }
+
+        // Gérer le cas spécial où moduleId est "0"
+        if (moduleId === "0") {
+          // Si nous avons des modules disponibles, utiliser le premier
+          if (availableModules.length > 0) {
+            realModuleId = availableModules[0].id;
+            console.log(
+              `Utilisation du premier module disponible (ID: ${realModuleId})`
             );
-            // En cas d'erreur, on essaie quand même l'approche par index
-            if (
-              course.modules &&
-              Array.isArray(course.modules) &&
-              course.modules.length > 0
-            ) {
-              realModuleId = course.modules[0].id;
-            }
+          } else {
+            // Si aucun module n'est disponible, afficher une erreur
+            const errorMessage = `Aucun module trouvé dans ce cours (ID: ${courseId})`;
+            console.error(errorMessage);
+            setError(errorMessage);
+            setLoading(false);
+            return;
           }
         }
         // Pour tous les autres cas numériques qui ne sont pas "0"
-        else if (
-          !isNaN(parseInt(moduleId)) &&
-          course.modules &&
-          Array.isArray(course.modules)
-        ) {
+        else if (!isNaN(parseInt(moduleId)) && availableModules.length > 0) {
           const moduleIndex = parseInt(moduleId);
           // Vérifier si le moduleIndex est valide dans le tableau des modules
-          if (moduleIndex >= 0 && moduleIndex < course.modules.length) {
+          if (moduleIndex >= 0 && moduleIndex < availableModules.length) {
             // Utiliser l'ID réel du module plutôt que l'index
-            realModuleId = course.modules[moduleIndex].id;
+            realModuleId = availableModules[moduleIndex].id;
             console.log(
               `Converted module index ${moduleId} to module ID ${realModuleId}`
             );
@@ -135,7 +133,16 @@ const ModulePage = () => {
         });
         const module = await fetchModuleDetails(courseId, realModuleId);
         if (!module) {
-          const errorMessage = `Module non trouvé (Cours: ${courseId}, Module: ${realModuleId})`;
+          let errorMessage = `Module non trouvé (Cours: ${courseId}, Module: ${realModuleId})`;
+
+          // Ajouter la liste des modules disponibles
+          if (availableModules.length > 0) {
+            errorMessage += "\n\nModules disponibles:";
+            availableModules.forEach((m, index) => {
+              errorMessage += `\n${index}: ${m.title} (ID: ${m.id})`;
+            });
+          }
+
           console.error(errorMessage);
           setError(errorMessage);
           setLoading(false);

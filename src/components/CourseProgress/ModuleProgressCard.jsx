@@ -59,7 +59,7 @@ const ModuleProgressCard = ({ moduleId, courseId, moduleData, index }) => {
   // Déterminer si le module est accessible
   // Le premier module est toujours accessible
   // Les modules suivants sont accessibles si le module précédent est complété ou si l'utilisateur a déjà commencé ce module
-  const isAccessible = index === 0 || (index > 0 && progress !== null);
+  const isAccessible = true; // Rendre tous les modules accessibles
 
   if (loading) {
     return (

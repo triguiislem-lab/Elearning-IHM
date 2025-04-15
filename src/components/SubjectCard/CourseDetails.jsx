@@ -47,6 +47,7 @@ const CourseDetails = () => {
   const [activeModule, setActiveModule] = useState(null);
   const [showModuleContent, setShowModuleContent] = useState(false);
   const [isEnrolled, setIsEnrolled] = useState(false);
+  const [isCourseInstructor, setIsCourseInstructor] = useState(false);
 
   // Firebase refs
   const auth = getAuth();
@@ -82,9 +83,24 @@ const CourseDetails = () => {
         const isUserFormateur =
           userRole === "instructor" || userRole === "formateur";
 
-        // Si l'utilisateur est un formateur, il a accès à tous les cours
-        if (isUserFormateur) {
-          setIsEnrolled(true);
+        // Vérifier si cet instructeur est l'auteur du cours
+        let isCourseInstructor = false;
+        if (isUserFormateur && course) {
+          const instructorId = course.instructorId || course.formateur;
+          isCourseInstructor = instructorId === user.uid;
+        }
+
+        // Si l'utilisateur est l'instructeur du cours, ne pas le considérer comme "inscrit"
+        if (isCourseInstructor) {
+          setIsEnrolled(false); // Un instructeur n'est pas "inscrit" au sens étudiant
+          setIsCourseInstructor(true); // Marquer comme instructeur du cours
+          localStorage.removeItem(`enrolled_${user.uid}_${id}`); // Nettoyer le local storage si nécessaire
+          return; // Sortir, l'instructeur a accès mais n'est pas "inscrit"
+        }
+
+        // Si l'utilisateur est un formateur mais PAS l'auteur de CE cours, il a accès par défaut
+        if (isUserFormateur && !isCourseInstructor) {
+          setIsEnrolled(true); // Autre formateur, accès général
           localStorage.setItem(`enrolled_${user.uid}_${id}`, "true");
           return;
         }
@@ -167,7 +183,7 @@ const CourseDetails = () => {
     };
 
     checkUserRoleAndEnrollment();
-  }, [auth, id]);
+  }, [auth, id, course]);
 
   // Ajouter un effet pour vérifier l'état d'inscription lorsque le cours change
   useEffect(() => {
@@ -1416,7 +1432,16 @@ const CourseDetails = () => {
                         ).toFixed(2)}
                       </h3>
 
-                      {isEnrolled && auth.currentUser ? (
+                      {isCourseInstructor ? (
+                        // Afficher le bouton de gestion pour l'instructeur du cours
+                        <button
+                          className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-300 flex items-center justify-center gap-2 mb-4"
+                          onClick={() => navigate(`/instructor/courses/${id}`)}
+                        >
+                          Gérer le cours
+                        </button>
+                      ) : isEnrolled && auth.currentUser ? (
+                        // Afficher le statut "inscrit" et bouton "Continuer" pour les étudiants/autres formateurs
                         <div className="mb-4">
                           <div className="bg-green-100 text-green-800 p-3 rounded-lg flex items-center gap-2 mb-3">
                             <svg
@@ -1463,6 +1488,7 @@ const CourseDetails = () => {
                           </button>
                         </div>
                       ) : (
+                        // Afficher le bouton "S'inscrire" pour les utilisateurs non inscrits
                         <button
                           className="w-full bg-secondary text-white py-3 px-4 rounded-lg font-medium hover:bg-secondary/90 transition-colors duration-300 flex items-center justify-center gap-2 mb-4"
                           onClick={handleEnrollClick}

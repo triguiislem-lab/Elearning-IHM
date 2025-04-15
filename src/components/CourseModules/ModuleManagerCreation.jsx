@@ -17,8 +17,15 @@ import {
   MdUpload,
   MdClose,
 } from "react-icons/md";
+import {
+  generateModuleId,
+  standardizeModule,
+  saveModuleToAllPaths,
+} from "../../utils/moduleStandardization";
 
-const ModuleManagerCreation = ({ modules, setModules }) => {
+const ModuleManagerCreation = ({ modules, setModules, courseId }) => {
+  // Debug log to see what courseId is being passed
+  console.log("ModuleManagerCreation received courseId:", courseId);
   const [showAddModule, setShowAddModule] = useState(false);
   const [showAddEvaluation, setShowAddEvaluation] = useState(false);
   const [showAddResource, setShowAddResource] = useState(false);
@@ -74,8 +81,11 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setSuccess("");
 
     try {
+      console.log("Début de la création du module avec courseId:", courseId);
+
       // Vérifier si le titre est vide
       if (!moduleData.title.trim()) {
         throw new Error("Le titre du module est requis");
@@ -91,14 +101,14 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         throw new Error("Un module avec ce titre existe déjà");
       }
 
-      // Générer un ID temporaire pour le module
-      const tempModuleId = `temp_${Date.now()}_${Math.random()
-        .toString(36)
-        .substring(2)}`;
+      // Générer un ID unique pour le module
+      const moduleId = generateModuleId();
+      console.log("ID du module généré:", moduleId);
 
-      // Créer le nouveau module
-      const newModule = {
-        id: tempModuleId,
+      // Créer le nouveau module avec des données standardisées
+      const moduleToCreate = {
+        id: moduleId,
+        courseId: courseId, // Ensure courseId is set
         title: moduleData.title.trim(),
         description: moduleData.description.trim(),
         order: moduleData.order || modules.length + 1,
@@ -109,26 +119,56 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
         resources: [],
       };
 
+      console.log("Module à créer:", moduleToCreate);
+
+      // Standardize the module
+      const standardizedModule = standardizeModule(moduleToCreate, courseId);
+      console.log("Module standardisé:", standardizedModule);
+
       // Vérifier si le module existe déjà dans la liste (par ID)
       const moduleAlreadyExists = modules.some(
-        (module) => module.id === tempModuleId
+        (module) => module.id === moduleId
       );
 
       if (moduleAlreadyExists) {
         throw new Error("Ce module existe déjà dans la liste");
       }
 
-      // Ajouter le module à la liste
+      // If courseId is available, save the module to the database
+      if (courseId) {
+        console.log(
+          "Sauvegarde du module dans la base de données avec courseId:",
+          courseId
+        );
+        try {
+          // Save the module to all paths in the database
+          await saveModuleToAllPaths(standardizedModule, courseId);
+          console.log(
+            `Module ${moduleId} saved to all paths for course ${courseId}`
+          );
+        } catch (saveError) {
+          console.error("Error saving module to database:", saveError);
+          // Continue even if save fails - we'll still add it to the local state
+        }
+      } else {
+        console.warn(
+          "Impossible de sauvegarder le module dans la base de données: courseId manquant"
+        );
+      }
+
+      // Ajouter le module à la liste locale
       setModules((prevModules) => {
         // Vérifier si le module existe déjà par titre
         const exists = prevModules.some(
           (module) =>
-            module.title.toLowerCase() === newModule.title.toLowerCase()
+            module.title.toLowerCase() ===
+            standardizedModule.title.toLowerCase()
         );
         if (exists) {
           throw new Error("Un module avec ce titre existe déjà");
         }
-        return [...prevModules, newModule];
+        console.log("Ajout du module à la liste locale");
+        return [...prevModules, standardizedModule];
       });
 
       // Réinitialiser le formulaire
@@ -144,6 +184,7 @@ const ModuleManagerCreation = ({ modules, setModules }) => {
       // Effacer le message de succès après 3 secondes
       setTimeout(() => setSuccess(""), 3000);
     } catch (error) {
+      console.error("Error adding module:", error);
       setError(`Erreur: ${error.message}`);
     } finally {
       setLoading(false);

@@ -679,222 +679,16 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 
 		console.log(`Recherche du module ${moduleId} dans le cours ${courseId}`);
 
-		// Tentative 1: Rechercher le module directement
-		const moduleDirectRef = ref(database, `elearning/courses/${courseId}/modules/${moduleId}`);
-		const moduleDirectSnapshot = await get(moduleDirectRef);
+		// Rechercher le module dans le chemin standardisé
+		const moduleRef = ref(database, `elearning/courses/${courseId}/modules/${moduleId}`);
+		const snapshot = await get(moduleRef);
 
-		if (moduleDirectSnapshot.exists()) {
-			console.log(`Module ${moduleId} trouvé directement`);
-			let moduleData = moduleDirectSnapshot.val();
+		if (snapshot.exists()) {
+			console.log(`Module ${moduleId} trouvé`);
+			const moduleData = snapshot.val();
 
-			// S'assurer que le module a des champs obligatoires
-			moduleData = {
-				...moduleData,
-				id: moduleId,
-				courseId: courseId,
-				title: moduleData.title || moduleData.titre || "Module sans titre",
-				description: moduleData.description || "",
-				resources: moduleData.resources || [],
-				evaluations: moduleData.evaluations || {}
-			};
-
-			// Si les ressources ou évaluations sont manquantes, essayons de les récupérer séparément
-			if (!moduleData.resources ||
-			    (Array.isArray(moduleData.resources) && moduleData.resources.length === 0) ||
-				(typeof moduleData.resources === 'object' && Object.keys(moduleData.resources).length === 0)) {
-
-				// Chercher les ressources dans un chemin dédié
-				const resourcesRef = ref(database, `elearning/courses/${courseId}/modules/${moduleId}/resources`);
-				const resourcesSnapshot = await get(resourcesRef);
-
-				if (resourcesSnapshot.exists()) {
-					const resourcesData = resourcesSnapshot.val();
-					if (Array.isArray(resourcesData)) {
-						moduleData.resources = resourcesData;
-					} else {
-						moduleData.resources = Object.entries(resourcesData).map(([id, resource]) => ({
-							id,
-							...resource
-						}));
-					}
-					console.log(`Ressources récupérées séparément pour le module ${moduleId}:`, moduleData.resources.length);
-				}
-
-				// Chercher aussi dans les chemins alternatifs
-				if (moduleData.resources.length === 0) {
-					const altResourcesRef = ref(database, `elearning/resources/${courseId}/${moduleId}`);
-					const altResourcesSnapshot = await get(altResourcesRef);
-
-					if (altResourcesSnapshot.exists()) {
-						const altResourcesData = altResourcesSnapshot.val();
-						if (Array.isArray(altResourcesData)) {
-							moduleData.resources = altResourcesData;
-						} else {
-							moduleData.resources = Object.entries(altResourcesData).map(([id, resource]) => ({
-								id,
-								...resource
-							}));
-						}
-						console.log(`Ressources alternatives récupérées pour le module ${moduleId}:`, moduleData.resources.length);
-					}
-				}
-			}
-
-			// Faire de même pour les évaluations
-			if (!moduleData.evaluations ||
-			    (Array.isArray(moduleData.evaluations) && moduleData.evaluations.length === 0) ||
-				(typeof moduleData.evaluations === 'object' && Object.keys(moduleData.evaluations).length === 0)) {
-
-				// Chercher les évaluations
-				const evaluationsRef = ref(database, `elearning/evaluations/${moduleId}`);
-				const evaluationsSnapshot = await get(evaluationsRef);
-
-				if (evaluationsSnapshot.exists()) {
-					const evaluationsData = evaluationsSnapshot.val();
-
-					// Vérifier s'il y a un quiz statique
-					if (evaluationsData.static_quiz) {
-						if (!moduleData.evaluations) moduleData.evaluations = {};
-
-						moduleData.evaluations.static_quiz = {
-							id: "static_quiz",
-							type: "quiz",
-							title: evaluationsData.static_quiz.title || "Quiz du module",
-							description: evaluationsData.static_quiz.description || "Évaluation des connaissances",
-							questions: evaluationsData.static_quiz.questions || [],
-							maxScore: 100
-						};
-
-						console.log(`Quiz statique récupéré pour le module ${moduleId}`);
-					}
-
-					// Vérifier s'il y a des questions directement
-					if (evaluationsData.questions) {
-						if (!moduleData.evaluations) moduleData.evaluations = {};
-
-						moduleData.evaluations.main_quiz = {
-							id: "main_quiz",
-							type: "quiz",
-							title: "Quiz du module",
-							description: "Évaluez vos connaissances",
-							questions: evaluationsData.questions,
-							maxScore: 100
-						};
-
-						console.log(`Questions directes récupérées pour le module ${moduleId}`);
-					}
-
-					// Autres évaluations potentielles
-					Object.entries(evaluationsData).forEach(([key, value]) => {
-						if (key !== 'static_quiz' && key !== 'questions' && !key.includes('/') && typeof value === 'object') {
-							if (!moduleData.evaluations) moduleData.evaluations = {};
-							moduleData.evaluations[key] = {
-								id: key,
-								...value
-							};
-						}
-					});
-				}
-			}
-
-			// Standardiser les évaluations si nécessaire
-			if (moduleData.evaluations && typeof moduleData.evaluations === 'object' && !Array.isArray(moduleData.evaluations)) {
-				const evaluationsArray = Object.entries(moduleData.evaluations).map(([id, evaluation]) => ({
-					id,
-					...evaluation
-				}));
-
-				if (evaluationsArray.length > 0) {
-					// Remplacer l'objet evaluations par le tableau normalisé
-					moduleData.evaluations = evaluationsArray;
-				}
-			}
-
-			// Standardiser les ressources si nécessaire
-			if (!Array.isArray(moduleData.resources) && typeof moduleData.resources === 'object') {
-				moduleData.resources = Object.entries(moduleData.resources).map(([id, resource]) => ({
-					id,
-					...resource
-				}));
-			}
-
-			// Mettre en cache et retourner
-			setCachedData(cacheKey, moduleData);
-			return moduleData;
-		}
-
-		// Tentative 2: Chercher dans le cours
-		const courseRef = ref(database, `elearning/courses/${courseId}`);
-		const courseSnapshot = await get(courseRef);
-
-		if (courseSnapshot.exists()) {
-			const courseData = courseSnapshot.val();
-
-			// Chercher dans les modules du cours
-			if (courseData.modules) {
-				let moduleData = null;
-
-				// Cas 1: modules est un tableau
-				if (Array.isArray(courseData.modules)) {
-					moduleData = courseData.modules.find(m => m.id === moduleId);
-				}
-				// Cas 2: modules est un objet
-				else if (typeof courseData.modules === 'object') {
-					moduleData = courseData.modules[moduleId];
-				}
-
-				if (moduleData) {
-					console.log(`Module ${moduleId} trouvé dans le cours ${courseId}`);
-
-					// S'assurer que le module a les champs obligatoires
-					moduleData = {
-						...moduleData,
-						id: moduleId,
-						courseId: courseId,
-						title: moduleData.title || moduleData.titre || "Module sans titre",
-						description: moduleData.description || "",
-						resources: moduleData.resources || [],
-						evaluations: moduleData.evaluations || {}
-					};
-
-					// Standardiser les évaluations si nécessaire
-					if (moduleData.evaluations && typeof moduleData.evaluations === 'object' && !Array.isArray(moduleData.evaluations)) {
-						const evaluationsArray = Object.entries(moduleData.evaluations).map(([id, evaluation]) => ({
-							id,
-							...evaluation
-						}));
-
-						if (evaluationsArray.length > 0) {
-							// Remplacer l'objet evaluations par le tableau normalisé
-							moduleData.evaluations = evaluationsArray;
-						}
-					}
-
-					// Standardiser les ressources si nécessaire
-					if (!Array.isArray(moduleData.resources) && typeof moduleData.resources === 'object') {
-						moduleData.resources = Object.entries(moduleData.resources).map(([id, resource]) => ({
-							id,
-							...resource
-						}));
-					}
-
-					// Mettre en cache et retourner
-					setCachedData(cacheKey, moduleData);
-					return moduleData;
-				}
-			}
-		}
-
-		// Tentative 3: Chercher dans un chemin alternatif
-		const altModuleRef = ref(database, `elearning/modules/${courseId}/${moduleId}`);
-		const altModuleSnapshot = await get(altModuleRef);
-
-		if (altModuleSnapshot.exists()) {
-			console.log(`Module ${moduleId} trouvé dans un chemin alternatif`);
-			const moduleData = altModuleSnapshot.val();
-
-			// Standardiser et retourner
-			let standardizedModule = {
+			// S'assurer que le module a les champs obligatoires
+			const standardizedModule = {
 				...moduleData,
 				id: moduleId,
 				courseId: courseId,
@@ -906,15 +700,10 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 
 			// Standardiser les évaluations si nécessaire
 			if (standardizedModule.evaluations && typeof standardizedModule.evaluations === 'object' && !Array.isArray(standardizedModule.evaluations)) {
-				const evaluationsArray = Object.entries(standardizedModule.evaluations).map(([id, evaluation]) => ({
+				standardizedModule.evaluations = Object.entries(standardizedModule.evaluations).map(([id, evaluation]) => ({
 					id,
 					...evaluation
 				}));
-
-				if (evaluationsArray.length > 0) {
-					// Remplacer l'objet evaluations par le tableau normalisé
-					standardizedModule.evaluations = evaluationsArray;
-				}
 			}
 
 			// Standardiser les ressources si nécessaire
@@ -930,29 +719,13 @@ export const fetchModuleDetails = async (courseId, moduleId) => {
 			return standardizedModule;
 		}
 
-		// Module non trouvé, créer un module vide mais valide
+		// Module non trouvé
 		console.warn(`Module ${moduleId} non trouvé pour le cours ${courseId}`);
-		const emptyModule = {
-			id: moduleId,
-			courseId: courseId,
-			title: "Module non trouvé",
-			description: "Ce module n'existe pas dans le cours actuel",
-			resources: [],
-			evaluations: {}
-		};
-		return emptyModule;
+		return null;
 
 	} catch (error) {
 		console.error('Erreur lors de la récupération du module:', error);
-		// En cas d'erreur, retourner un module minimal mais valide
-		return {
-			id: moduleId,
-			courseId: courseId,
-			title: "Erreur de chargement",
-			description: "Une erreur est survenue lors du chargement de ce module",
-			resources: [],
-			evaluations: {}
-		};
+		return null;
 	}
 };
 
@@ -1103,7 +876,6 @@ export const addModuleToCourse = async (courseId, moduleData, instructorId = nul
 		if (!newModule.resources) {
 			newModule.resources = [];
 		} else if (typeof newModule.resources === 'object' && !Array.isArray(newModule.resources)) {
-			// Convertir l'objet ressources en tableau pour la standardisation
 			newModule.resources = Object.entries(newModule.resources).map(([id, resource]) => ({
 				id,
 				...resource,
@@ -1115,7 +887,6 @@ export const addModuleToCourse = async (courseId, moduleData, instructorId = nul
 		if (!newModule.evaluations) {
 			newModule.evaluations = [];
 		} else if (typeof newModule.evaluations === 'object' && !Array.isArray(newModule.evaluations)) {
-			// Convertir l'objet évaluations en tableau pour la standardisation
 			newModule.evaluations = Object.entries(newModule.evaluations).map(([id, evaluation]) => ({
 				id,
 				...evaluation,
@@ -1125,86 +896,10 @@ export const addModuleToCourse = async (courseId, moduleData, instructorId = nul
 
 		console.log(`Ajout du module ${moduleId} au cours ${courseId}`);
 
-		// Stocker le module dans le chemin MODULE_PATH
-		const moduleRef = ref(database, paths.MODULE_PATH(courseId, moduleId));
+		// Stocker le module dans le chemin standardisé
+		const moduleRef = ref(database, `elearning/courses/${courseId}/modules/${moduleId}`);
 		await set(moduleRef, newModule);
-		console.log(`Module ${moduleId} ajouté dans le chemin MODULE_PATH`);
-
-		// Mettre à jour la propriété modules du cours
-		const courseRef = ref(database, paths.COURSE_PATH(courseId));
-		const courseSnapshot = await get(courseRef);
-
-		if (courseSnapshot.exists()) {
-			const courseData = courseSnapshot.val();
-			let modulesData = {};
-
-			// Vérifier si modules existe déjà
-			if (courseData.modules) {
-				// Si modules est un objet, l'utiliser directement
-				if (typeof courseData.modules === 'object' && !Array.isArray(courseData.modules)) {
-					modulesData = { ...courseData.modules };
-				} else {
-					// Si modules est un tableau, le convertir en objet
-					const modulesArray = Array.isArray(courseData.modules)
-						? courseData.modules
-						: Object.entries(courseData.modules).map(([id, module]) => ({
-							...module,
-							id: module.id || id
-						}));
-
-					// Convertir le tableau en objet avec les IDs comme clés
-					modulesData = modulesArray.reduce((acc, module) => {
-						if (module && module.id) {
-							acc[module.id] = { ...module };
-						}
-						return acc;
-					}, {});
-				}
-			}
-
-			// Vérifier si le module existe déjà
-			if (modulesData[moduleId]) {
-				console.warn(`Module ${moduleId} existe déjà dans le cours, mise à jour au lieu d'ajout`);
-			}
-
-			// Ajouter ou mettre à jour le module
-			modulesData[moduleId] = newModule;
-
-			// Mettre à jour le cours avec le nouvel objet de modules
-			await update(courseRef, {
-				modules: modulesData,
-				updatedAt: new Date().toISOString()
-			});
-			console.log(`Module ${moduleId} ajouté/mis à jour dans la propriété modules du cours`);
-			
-			// Si un instructorId est fourni, enregistrer également dans le chemin legacy
-			if (instructorId) {
-				try {
-					const legacyCoursePath = `Elearning/Cours/${courseId}`;
-					const legacyCourseRef = ref(database, legacyCoursePath);
-					const legacySnapshot = await get(legacyCourseRef);
-					
-					if (legacySnapshot.exists()) {
-						const legacyData = legacySnapshot.val();
-						let legacyModules = legacyData.modules || {};
-						
-						if (typeof legacyModules !== 'object' || Array.isArray(legacyModules)) {
-							legacyModules = {};
-						}
-						
-						legacyModules[moduleId] = newModule;
-						
-						await update(legacyCourseRef, {
-							modules: legacyModules,
-							lastUpdated: new Date().toISOString()
-						});
-						console.log(`Module également mis à jour dans le chemin legacy`);
-					}
-				} catch (error) {
-					console.error(`Erreur lors de la mise à jour du chemin legacy: ${error.message}`);
-				}
-			}
-		}
+		console.log(`Module ${moduleId} ajouté dans le chemin standardisé`);
 
 		// Invalider le cache
 		clearCacheItem(`module_${courseId}_${moduleId}`);
@@ -1230,7 +925,7 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
 
 	try {
 		// Récupérer les données actuelles du module
-		const moduleRef = ref(database, paths.MODULE_PATH(courseId, moduleId));
+		const moduleRef = ref(database, `elearning/courses/${courseId}/modules/${moduleId}`);
 		const snapshot = await get(moduleRef);
 
 		if (!snapshot.exists()) {
@@ -1290,55 +985,6 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
 			evaluations: updatedEvaluations,
 			updatedAt: new Date().toISOString()
 		});
-
-		// Enregistrer également dans le chemin standard pour les évaluations
-		const evalPathRef = ref(database, `elearning/evaluations/${moduleId}/${evaluationId}`);
-		await set(evalPathRef, newEvaluation);
-
-		// Si c'est un quiz, enregistrer également les questions dans le chemin static_quiz
-		if (evaluationData.type === 'quiz' && evaluationData.questions) {
-			console.log(`Enregistrement du quiz dans la collection des évaluations`);
-			const quizRef = ref(database, paths.STATIC_QUIZ_PATH(moduleId));
-			await set(quizRef, {
-				title: evaluationData.title,
-				description: evaluationData.description,
-				questions: evaluationData.questions,
-				createdAt: newEvaluation.createdAt,
-				updatedAt: newEvaluation.updatedAt,
-				moduleId,
-				courseId
-			});
-		}
-
-		// Mettre à jour également dans le cours parent pour garantir la cohérence
-		try {
-			const courseRef = ref(database, paths.COURSE_PATH(courseId));
-			const courseSnapshot = await get(courseRef);
-			
-			if (courseSnapshot.exists()) {
-				const courseData = courseSnapshot.val();
-				
-				if (courseData.modules) {
-					// Si les modules sont un objet
-					if (typeof courseData.modules === 'object' && !Array.isArray(courseData.modules)) {
-						if (courseData.modules[moduleId]) {
-							// Mettre à jour les évaluations dans le module
-							courseData.modules[moduleId].evaluations = updatedEvaluations;
-							courseData.modules[moduleId].updatedAt = new Date().toISOString();
-							
-							// Mettre à jour le cours
-							await update(courseRef, {
-								modules: courseData.modules,
-								updatedAt: new Date().toISOString()
-							});
-							console.log(`Évaluation mise à jour dans le cours parent`);
-						}
-					}
-				}
-			}
-		} catch (error) {
-			console.error(`Erreur lors de la mise à jour du cours parent: ${error.message}`);
-		}
 
 		// Invalider les caches associés
 		clearCacheItem(`module_${courseId}_${moduleId}`);

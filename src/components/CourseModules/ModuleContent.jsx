@@ -626,7 +626,7 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
             completed: true,
             score: Math.round(averageScore),
             completedAt: new Date().toISOString(),
-            passed: averageScore >= 70,
+            passed: averageScore >= 50,
           };
 
           // Mettre à jour dans le nouveau chemin

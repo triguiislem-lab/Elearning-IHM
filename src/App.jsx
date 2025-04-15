@@ -42,6 +42,12 @@ import InstructorCourseManagement from "./pages/Instructor/InstructorCourseManag
 import MessagesPage from "./pages/Messages/MessagesPage";
 import NotFound from "./pages/NotFound";
 
+// Test pages
+import ResourceEvaluationTestPage from "./pages/TestPages/ResourceEvaluationTestPage";
+import ResourceCreationTestPage from "./pages/TestPages/ResourceCreationTestPage";
+import ModuleDebugPage from "./pages/TestPages/ModuleDebugPage";
+import ModuleDebugPageUpdated from "./pages/TestPages/ModuleDebugPageUpdated";
+
 // Import the new layout
 import AdminLayout from "./components/Layout/AdminLayout";
 
@@ -186,6 +192,32 @@ const App = () => {
                     element={<DatabaseStandardization />}
                   />
                 </Route>
+
+                {/* Test pages */}
+                <Route
+                  path="/test/resource-evaluation"
+                  element={<ResourceEvaluationTestPage />}
+                />
+                <Route
+                  path="/test/resource-evaluation/:courseId/:moduleId"
+                  element={<ResourceEvaluationTestPage />}
+                />
+                <Route
+                  path="/test/resource-creation"
+                  element={<ResourceCreationTestPage />}
+                />
+                <Route
+                  path="/test/resource-creation/:courseId/:moduleId"
+                  element={<ResourceCreationTestPage />}
+                />
+                <Route
+                  path="/test/module-debug"
+                  element={<ModuleDebugPageUpdated />}
+                />
+                <Route
+                  path="/test/module-debug/:courseId"
+                  element={<ModuleDebugPageUpdated />}
+                />
 
                 {/* 404 route */}
                 <Route path="*" element={<NotFound />} />

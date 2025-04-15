@@ -103,20 +103,35 @@ const ModuleQuiz = ({
 
         const modules = moduleKeys.map((key) => data[key]);
         const allModulesCompleted = modules.every((module) => module.completed);
+
+        // Utiliser uniquement le dernier score (supposé être le meilleur)
+        // Assurez-vous que chaque module a un score valide
+        const validModules = modules.filter(
+          (module) => typeof module.score === "number" && !isNaN(module.score)
+        );
+
+        // Calculer la moyenne des scores
         const averageScore =
-          modules.reduce((sum, module) => sum + (module.score || 0), 0) /
-          modules.length;
+          validModules.length > 0
+            ? validModules.reduce((sum, module) => sum + module.score, 0) /
+              validModules.length
+            : 0;
 
         if (allModulesCompleted) {
           const courseStatusRef = ref(
             database,
             `elearning/courses/${courseId}/status/${user.uid}`
           );
+
+          // Forcer le score à être au moins égal au score actuel si tous les modules sont complétés
+          // Cela garantit que si vous venez de réussir avec 100%, ce score sera pris en compte
+          const finalScore = Math.max(averageScore, score);
+
           await set(courseStatusRef, {
             completed: true,
-            score: averageScore,
+            score: finalScore,
             completedAt: new Date().toISOString(),
-            passed: averageScore >= 70,
+            passed: finalScore >= 50,
           });
         }
       }
