@@ -10,6 +10,8 @@ import { ref, set, update } from "firebase/database";
 import { useAuth } from "../../hooks/useAuth";
 import ModuleManagerCreation from "../../components/CourseModules/ModuleManagerCreation";
 import OptimizedLoadingSpinner from "../../components/Common/OptimizedLoadingSpinner";
+import ModuleContentFix from "../../components/CourseModules/ModuleContentFix";
+import { MdPreview, MdClose, MdVisibility } from "react-icons/md";
 
 // Fonction pour générer un ID unique
 const generateUniqueId = () => {
@@ -46,7 +48,18 @@ const CourseForm = () => {
   const [courseModules, setCourseModules] = useState([]);
 
   // État pour suivre l'onglet actif
-  const [activeTab, setActiveTab] = useState("info"); // "info" ou "modules"
+  const [activeTab, setActiveTab] = useState("info"); // "info", "modules", "preview"
+  const [selectedModule, setSelectedModule] = useState(null);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  // Helper for logging with timestamps
+  const log = (message, data = null) => {
+    const timestamp = new Date().toISOString().split("T")[1].substring(0, 8);
+    console.log(`[${timestamp}] CourseForm: ${message}`);
+    if (data) {
+      console.log(`[${timestamp}] Data:`, data);
+    }
+  };
 
   useEffect(() => {
     const loadData = async () => {
@@ -56,6 +69,7 @@ const CourseForm = () => {
 
         // Vérifier si l'utilisateur est connecté
         if (!user) {
+          log("Utilisateur non connecté, redirection vers la page de login");
           setError("Vous devez être connecté pour accéder à cette page");
           setTimeout(() => {
             navigate("/login");
@@ -64,6 +78,7 @@ const CourseForm = () => {
         }
 
         // Vérifier si l'utilisateur est un instructeur ou un admin
+        log(`Vérification des droits, userRole: ${userRole}, uid: ${user.uid}`);
 
         const isInstructor =
           userRole === "instructor" ||
@@ -82,6 +97,7 @@ const CourseForm = () => {
           user?.normalizedRole === "admin";
 
         if (!isInstructor && !isAdmin) {
+          log("Utilisateur sans droits d'instructeur ou admin");
           setError(
             "Vous n'avez pas les droits pour créer ou modifier un cours"
           );
@@ -100,43 +116,56 @@ const CourseForm = () => {
         setLoadingData(true);
 
         // Charger les spécialités
-        console.log("Début du chargement des spécialités...");
+        log("Début du chargement des spécialités");
         const specialitesData = await fetchSpecialitesFromDatabase();
-        console.log("Spécialités chargées:", specialitesData);
+        log(`${specialitesData.length} spécialités chargées`);
 
         if (!specialitesData || specialitesData.length === 0) {
-          console.warn("Aucune spécialité trouvée dans la base de données");
+          log("Aucune spécialité trouvée", { specialitesData });
           setError(
             "Aucune spécialité disponible. Veuillez contacter l'administrateur."
           );
         } else {
-          console.log("Nombre de spécialités:", specialitesData.length);
-          console.log("Première spécialité:", specialitesData[0]);
           setSpecialites(specialitesData);
         }
 
         // Charger les disciplines
-        console.log("Début du chargement des disciplines...");
+        log("Début du chargement des disciplines");
         const disciplinesData = await fetchDisciplinesFromDatabase();
-        console.log("Disciplines chargées:", disciplinesData);
+        log(`${disciplinesData.length} disciplines chargées`);
 
         if (!disciplinesData || disciplinesData.length === 0) {
-          console.warn("Aucune discipline trouvée dans la base de données");
+          log("Aucune discipline trouvée", { disciplinesData });
           setError(
             "Aucune discipline disponible. Veuillez contacter l'administrateur."
           );
         } else {
-          console.log("Nombre de disciplines:", disciplinesData.length);
-          console.log("Première discipline:", disciplinesData[0]);
           setDisciplines(disciplinesData);
         }
 
         // Si on est en mode édition, charger les données du cours
         if (isEditMode) {
+          log(`Chargement du cours en mode édition, ID: ${id}`);
           const course = await fetchCourseById(id);
           if (course) {
+            log("Cours trouvé", {
+              courseId: course.id,
+              title: course.title,
+              hasModules: !!course.modules,
+              moduleCount: course.modules
+                ? Array.isArray(course.modules)
+                  ? course.modules.length
+                  : typeof course.modules === "object"
+                  ? Object.keys(course.modules).length
+                  : 0
+                : 0,
+            });
+
             // Vérifier si l'utilisateur est l'instructeur du cours ou un admin
             if (course.instructorId !== user.uid && !isAdmin) {
+              log(
+                `Utilisateur ${user.uid} n'est pas l'instructeur du cours ${course.instructorId}`
+              );
               setError("Vous n'avez pas les droits pour modifier ce cours");
               setTimeout(() => {
                 if (isAdmin) {
@@ -167,14 +196,55 @@ const CourseForm = () => {
               const filtered = disciplinesData.filter(
                 (discipline) => discipline.specialiteId === course.specialiteId
               );
+              log(
+                `${filtered.length} disciplines filtrées pour la spécialité ${course.specialiteId}`
+              );
               setFilteredDisciplines(filtered);
             }
 
             // Charger les modules du cours s'ils existent
             if (course.modules) {
+              log("Traitement des modules du cours");
+
+              // Log la structure de données des modules
+              if (Array.isArray(course.modules)) {
+                log(
+                  `Les modules sont un tableau de ${course.modules.length} éléments`
+                );
+              } else if (typeof course.modules === "object") {
+                log(
+                  `Les modules sont un objet avec ${
+                    Object.keys(course.modules).length
+                  } clés`,
+                  { moduleKeys: Object.keys(course.modules) }
+                );
+              } else {
+                log(`Format de modules non reconnu: ${typeof course.modules}`);
+              }
+
               // Convertir les modules de format objet à tableau
               const modulesArray = Object.entries(course.modules).map(
                 ([moduleId, moduleData]) => {
+                  // Log pour chaque module
+                  log(`Traitement du module ${moduleId}`, {
+                    hasResources: !!moduleData.resources,
+                    resourceCount: moduleData.resources
+                      ? Array.isArray(moduleData.resources)
+                        ? moduleData.resources.length
+                        : typeof moduleData.resources === "object"
+                        ? Object.keys(moduleData.resources).length
+                        : 0
+                      : 0,
+                    hasEvaluations: !!moduleData.evaluations,
+                    evalCount: moduleData.evaluations
+                      ? Array.isArray(moduleData.evaluations)
+                        ? moduleData.evaluations.length
+                        : typeof moduleData.evaluations === "object"
+                        ? Object.keys(moduleData.evaluations).length
+                        : 0
+                      : 0,
+                  });
+
                   // Convertir les évaluations de format objet à tableau si elles existent
                   let evaluations = {};
                   if (moduleData.evaluations) {
@@ -200,19 +270,28 @@ const CourseForm = () => {
                   index === self.findIndex((m) => m.id === module.id)
               );
 
+              log(`${uniqueModules.length} modules chargés après nettoyage`);
               setCourseModules(uniqueModules);
+            } else {
+              log("Le cours n'a pas de modules");
             }
           } else {
+            log(`Cours non trouvé avec l'ID: ${id}`);
             setError("Cours non trouvé");
           }
         } else {
           // En mode création, définir l'instructeur actuel comme instructeur par défaut
+          log("Mode création de cours");
           setCourseData((prev) => ({
             ...prev,
             instructorId: user.uid || "",
           }));
         }
       } catch (error) {
+        log("Erreur lors du chargement des données", {
+          error: error.message,
+          stack: error.stack,
+        });
         setError("Erreur lors du chargement des données");
       } finally {
         setLoadingData(false);
@@ -248,12 +327,14 @@ const CourseForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    log("Soumission du formulaire de cours");
     setSaving(true);
     setError("");
     setSuccess("");
 
     try {
       // Validation
+      log("Validation des champs du formulaire");
       if (!courseData.title || courseData.title.trim().length < 5) {
         throw new Error(
           "Le titre est obligatoire et doit contenir au moins 5 caractères"
@@ -282,11 +363,30 @@ const CourseForm = () => {
 
       const timestamp = new Date().toISOString();
       const courseId = isEditMode ? id : generateUniqueId();
+      log(
+        `${
+          isEditMode ? "Mise à jour" : "Création"
+        } du cours avec ID: ${courseId}`
+      );
 
       // Préparer les modules
+      log(`Préparation de ${courseModules.length} modules pour sauvegarde`);
       const modulesData = {};
       courseModules.forEach((module, index) => {
         const moduleId = module.id || generateUniqueId();
+        log(
+          `Préparation du module ${index + 1}/${
+            courseModules.length
+          }: ${moduleId}`,
+          {
+            title: module.title,
+            hasResources: !!module.resources,
+            resourceCount: module.resources ? module.resources.length : 0,
+            hasEvaluations: !!module.evaluations,
+            evaluationType: typeof module.evaluations,
+          }
+        );
+
         modulesData[moduleId] = {
           ...module,
           order: index,
@@ -307,11 +407,19 @@ const CourseForm = () => {
       // Supprimer uniquement les champs inutiles
       delete cleanCourseData.createdAt;
 
+      log("Données prêtes pour la sauvegarde", {
+        courseId,
+        moduleCount: Object.keys(modulesData).length,
+      });
+
       // Sauvegarder le cours dans la base de données
+      log("Sauvegarde du cours dans la base de données");
       const courseRef = ref(database, `elearning/courses/${courseId}`);
       await update(courseRef, cleanCourseData);
+      log("Cours sauvegardé avec succès");
 
       // Mettre à jour la référence du cours dans la liste des cours de l'instructeur
+      log("Mise à jour des références");
       const instructorCoursesRef = ref(
         database,
         `elearning/users/${courseData.instructorId}/courses/${courseId}`
@@ -344,16 +452,43 @@ const CourseForm = () => {
         });
       }
 
+      log("Toutes les mises à jour ont réussi");
       setSuccess(`Cours ${isEditMode ? "mis à jour" : "créé"} avec succès!`);
       setTimeout(() => {
         navigate("/instructor/courses");
       }, 1500);
     } catch (error) {
-      console.error("Erreur lors de la sauvegarde:", error);
+      log("Erreur lors de la sauvegarde", {
+        error: error.message,
+        stack: error.stack,
+      });
       setError(`Erreur: ${error.message}`);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Add a new function to handle module preview
+  const handleModulePreview = (module) => {
+    log("Prévisualisation de module", {
+      moduleId: module.id,
+      title: module.title,
+    });
+    setSelectedModule(module);
+    setPreviewMode(true);
+  };
+
+  // Add a function to simulate completion for preview
+  const handlePreviewComplete = (type, itemId, score) => {
+    log("Simulation de complétion en mode aperçu", { type, itemId, score });
+    console.log(
+      `Preview mode: ${type} completed, id: ${itemId}, score: ${score || "N/A"}`
+    );
+    alert(
+      `${
+        type === "resource" ? "Ressource" : "Évaluation"
+      } complétée avec succès${score ? ` (Score: ${score})` : ""}`
+    );
   };
 
   if (loading) {
@@ -368,35 +503,33 @@ const CourseForm = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-6">
       <h1 className="text-2xl font-bold mb-6">
         {isEditMode ? "Modifier le cours" : "Créer un nouveau cours"}
       </h1>
 
-      {/* Onglets */}
-      <div className="mb-6 border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab("info")}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "info"
-                ? "border-secondary text-secondary"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            Informations générales
-          </button>
-          <button
-            onClick={() => setActiveTab("modules")}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "modules"
-                ? "border-secondary text-secondary"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            Modules et contenu
-          </button>
-        </nav>
+      {/* Tab Buttons */}
+      <div className="flex border-b mb-6">
+        <button
+          onClick={() => setActiveTab("info")}
+          className={`px-4 py-2 ${
+            activeTab === "info"
+              ? "border-b-2 border-primary text-primary"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Informations générales
+        </button>
+        <button
+          onClick={() => setActiveTab("modules")}
+          className={`px-4 py-2 ${
+            activeTab === "modules"
+              ? "border-b-2 border-primary text-primary"
+              : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          Modules et contenu
+        </button>
       </div>
 
       {error && (
@@ -449,7 +582,6 @@ const CourseForm = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-secondary focus:border-secondary"
               placeholder="Décrivez le contenu et les objectifs du cours"
             />
-         
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -586,8 +718,6 @@ const CourseForm = () => {
             </div>
           </div>
 
-          
-
           <div className="flex justify-end space-x-4 pt-4">
             <Link
               to="/instructor/courses"
@@ -618,6 +748,72 @@ const CourseForm = () => {
             module peut contenir des ressources (vidéos, documents, etc.) et des
             évaluations.
           </p>
+
+          {/* Debug Info Panel */}
+          <div className="mb-6 p-2 bg-blue-50 rounded text-sm border border-blue-200">
+            <details>
+              <summary className="cursor-pointer text-blue-700">
+                Informations techniques (pour le débogage)
+              </summary>
+              <div className="mt-2 text-gray-700">
+                <p>
+                  <strong>ID du cours:</strong> {id || "Nouveau cours"}
+                </p>
+                <p>
+                  <strong>Nombre de modules:</strong> {courseModules.length}
+                </p>
+                <div className="mt-2 overflow-auto max-h-40">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-100">
+                        <th className="p-1 border">Index</th>
+                        <th className="p-1 border">ID</th>
+                        <th className="p-1 border">Titre</th>
+                        <th className="p-1 border">Ressources</th>
+                        <th className="p-1 border">Évaluations</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {courseModules.map((module, index) => (
+                        <tr
+                          key={module.id || index}
+                          className="hover:bg-gray-50"
+                        >
+                          <td className="p-1 border text-center">{index}</td>
+                          <td className="p-1 border">{module.id || "N/A"}</td>
+                          <td className="p-1 border">
+                            {module.title || "Sans titre"}
+                          </td>
+                          <td className="p-1 border text-center">
+                            {module.resources
+                              ? Array.isArray(module.resources)
+                                ? module.resources.length
+                                : typeof module.resources === "object"
+                                ? Object.keys(module.resources).length
+                                : "?"
+                              : 0}
+                          </td>
+                          <td className="p-1 border text-center">
+                            {module.evaluations
+                              ? Array.isArray(module.evaluations)
+                                ? module.evaluations.length
+                                : typeof module.evaluations === "object"
+                                ? Object.keys(module.evaluations).length
+                                : "?"
+                              : 0}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">
+                  * Ces informations sont utiles pour le débogage en cas de
+                  problème avec l'affichage des modules.
+                </p>
+              </div>
+            </details>
+          </div>
 
           <ModuleManagerCreation
             modules={courseModules}

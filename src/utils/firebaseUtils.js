@@ -1072,17 +1072,19 @@ export const updateUserProgress = async (userId, courseId, progressData) => {
  * Ajoute un nouveau module à un cours
  * @param {string} courseId - ID du cours
  * @param {Object} moduleData - Données du module
- * @returns {Object|null} Module créé ou null en cas d'erreur
+ * @param {string} [instructorId] - ID de l'instructeur (facultatif)
+ * @returns {string|null} ID du module créé ou null en cas d'erreur
  */
-export const addModuleToCourse = async (courseId, moduleData) => {
+export const addModuleToCourse = async (courseId, moduleData, instructorId = null) => {
 	if (!courseId || !moduleData) {
 		console.error('addModuleToCourse: Paramètres manquants', { courseId, moduleData });
 		return null;
 	}
 
 	try {
-		// Générer un ID unique pour le module s'il n'en a pas
-		const moduleId = moduleData.id || push(ref(database)).key;
+		// Générer un ID unique temporaire pour le module s'il n'en a pas
+		const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+		const moduleId = moduleData.id || tempId;
 
 		// Standardiser les données du module
 		const newModule = {
@@ -1093,11 +1095,35 @@ export const addModuleToCourse = async (courseId, moduleData) => {
 			description: moduleData.description || '',
 			order: moduleData.order || 0,
 			status: moduleData.status || 'active',
-			resources: moduleData.resources || [],
-			evaluations: moduleData.evaluations || [],
 			createdAt: moduleData.createdAt || new Date().toISOString(),
 			updatedAt: new Date().toISOString()
 		};
+
+		// Normaliser les ressources
+		if (!newModule.resources) {
+			newModule.resources = [];
+		} else if (typeof newModule.resources === 'object' && !Array.isArray(newModule.resources)) {
+			// Convertir l'objet ressources en tableau pour la standardisation
+			newModule.resources = Object.entries(newModule.resources).map(([id, resource]) => ({
+				id,
+				...resource,
+				title: resource.title || `Ressource ${id}`
+			}));
+		}
+
+		// Normaliser les évaluations
+		if (!newModule.evaluations) {
+			newModule.evaluations = [];
+		} else if (typeof newModule.evaluations === 'object' && !Array.isArray(newModule.evaluations)) {
+			// Convertir l'objet évaluations en tableau pour la standardisation
+			newModule.evaluations = Object.entries(newModule.evaluations).map(([id, evaluation]) => ({
+				id,
+				...evaluation,
+				title: evaluation.title || `Évaluation ${id}`
+			}));
+		}
+
+		console.log(`Ajout du module ${moduleId} au cours ${courseId}`);
 
 		// Stocker le module dans le chemin MODULE_PATH
 		const moduleRef = ref(database, paths.MODULE_PATH(courseId, moduleId));
@@ -1123,12 +1149,14 @@ export const addModuleToCourse = async (courseId, moduleData) => {
 						? courseData.modules
 						: Object.entries(courseData.modules).map(([id, module]) => ({
 							...module,
-							id
+							id: module.id || id
 						}));
 
 					// Convertir le tableau en objet avec les IDs comme clés
 					modulesData = modulesArray.reduce((acc, module) => {
-						acc[module.id] = { ...module };
+						if (module && module.id) {
+							acc[module.id] = { ...module };
+						}
 						return acc;
 					}, {});
 				}
@@ -1148,15 +1176,44 @@ export const addModuleToCourse = async (courseId, moduleData) => {
 				updatedAt: new Date().toISOString()
 			});
 			console.log(`Module ${moduleId} ajouté/mis à jour dans la propriété modules du cours`);
+			
+			// Si un instructorId est fourni, enregistrer également dans le chemin legacy
+			if (instructorId) {
+				try {
+					const legacyCoursePath = `Elearning/Cours/${courseId}`;
+					const legacyCourseRef = ref(database, legacyCoursePath);
+					const legacySnapshot = await get(legacyCourseRef);
+					
+					if (legacySnapshot.exists()) {
+						const legacyData = legacySnapshot.val();
+						let legacyModules = legacyData.modules || {};
+						
+						if (typeof legacyModules !== 'object' || Array.isArray(legacyModules)) {
+							legacyModules = {};
+						}
+						
+						legacyModules[moduleId] = newModule;
+						
+						await update(legacyCourseRef, {
+							modules: legacyModules,
+							lastUpdated: new Date().toISOString()
+						});
+						console.log(`Module également mis à jour dans le chemin legacy`);
+					}
+				} catch (error) {
+					console.error(`Erreur lors de la mise à jour du chemin legacy: ${error.message}`);
+				}
+			}
 		}
 
 		// Invalider le cache
 		clearCacheItem(`module_${courseId}_${moduleId}`);
 		clearCacheItem(`course_${courseId}`);
+		clearCacheItem(`course_${courseId}_true_true`);
 
-		return newModule;
+		return moduleId;
 	} catch (error) {
-		console.error('Erreur lors de l\'ajout du module:', error);
+		console.error(`Erreur lors de l'ajout du module: ${error.message}`);
 		return null;
 	}
 };
@@ -1177,13 +1234,14 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
 		const snapshot = await get(moduleRef);
 
 		if (!snapshot.exists()) {
+			console.error(`Module ${moduleId} non trouvé lors de l'ajout d'évaluation`);
 			return null;
 		}
 
 		const moduleData = snapshot.val();
-
+		
 		// Générer un ID unique pour l'évaluation
-		const evaluationId = Date.now().toString();
+		const evaluationId = evaluationData.id || `eval_${Date.now()}_${Math.random().toString(36).substring(2)}`;
 
 		// Préparer les données de l'évaluation
 		const newEvaluation = {
@@ -1191,37 +1249,105 @@ export const addEvaluationToModule = async (courseId, moduleId, evaluationData) 
 			id: evaluationId,
 			moduleId,
 			courseId,
-			createdAt: new Date().toISOString()
+			createdAt: evaluationData.createdAt || new Date().toISOString(),
+			updatedAt: new Date().toISOString()
 		};
 
-		// Ajouter l'évaluation au module
-		const evaluations = moduleData.evaluations || [];
-		evaluations.push(newEvaluation);
+		// Déterminer comment stocker l'évaluation selon la structure actuelle
+		let updatedEvaluations;
+		
+		if (moduleData.evaluations) {
+			// Si evaluations est un tableau
+			if (Array.isArray(moduleData.evaluations)) {
+				// Filtrer les évaluations existantes si l'ID existe déjà
+				updatedEvaluations = moduleData.evaluations.filter(
+					(evaluation) => evaluation.id !== evaluationId
+				);
+				// Ajouter la nouvelle évaluation
+				updatedEvaluations.push(newEvaluation);
+			} 
+			// Si evaluations est un objet
+			else if (typeof moduleData.evaluations === 'object') {
+				updatedEvaluations = { 
+					...moduleData.evaluations,
+					[evaluationId]: newEvaluation 
+				};
+			} 
+			// Si c'est autre chose, créer un nouveau tableau
+			else {
+				updatedEvaluations = [newEvaluation];
+			}
+		} 
+		// Si evaluations n'existe pas, créer un nouveau tableau
+		else {
+			updatedEvaluations = [newEvaluation];
+		}
 
+		console.log(`Mise à jour du module ${moduleId} avec la nouvelle évaluation ${evaluationId}`);
+		
 		// Mettre à jour le module dans Firebase
 		await update(moduleRef, {
-			evaluations,
-			lastUpdated: new Date().toISOString()
+			evaluations: updatedEvaluations,
+			updatedAt: new Date().toISOString()
 		});
 
-		// Si c'est un quiz, enregistrer également les questions dans la collection des évaluations
+		// Enregistrer également dans le chemin standard pour les évaluations
+		const evalPathRef = ref(database, `elearning/evaluations/${moduleId}/${evaluationId}`);
+		await set(evalPathRef, newEvaluation);
+
+		// Si c'est un quiz, enregistrer également les questions dans le chemin static_quiz
 		if (evaluationData.type === 'quiz' && evaluationData.questions) {
+			console.log(`Enregistrement du quiz dans la collection des évaluations`);
 			const quizRef = ref(database, paths.STATIC_QUIZ_PATH(moduleId));
 			await set(quizRef, {
+				title: evaluationData.title,
+				description: evaluationData.description,
 				questions: evaluationData.questions,
-				createdAt: new Date().toISOString(),
+				createdAt: newEvaluation.createdAt,
+				updatedAt: newEvaluation.updatedAt,
 				moduleId,
 				courseId
 			});
 		}
 
+		// Mettre à jour également dans le cours parent pour garantir la cohérence
+		try {
+			const courseRef = ref(database, paths.COURSE_PATH(courseId));
+			const courseSnapshot = await get(courseRef);
+			
+			if (courseSnapshot.exists()) {
+				const courseData = courseSnapshot.val();
+				
+				if (courseData.modules) {
+					// Si les modules sont un objet
+					if (typeof courseData.modules === 'object' && !Array.isArray(courseData.modules)) {
+						if (courseData.modules[moduleId]) {
+							// Mettre à jour les évaluations dans le module
+							courseData.modules[moduleId].evaluations = updatedEvaluations;
+							courseData.modules[moduleId].updatedAt = new Date().toISOString();
+							
+							// Mettre à jour le cours
+							await update(courseRef, {
+								modules: courseData.modules,
+								updatedAt: new Date().toISOString()
+							});
+							console.log(`Évaluation mise à jour dans le cours parent`);
+						}
+					}
+				}
+			}
+		} catch (error) {
+			console.error(`Erreur lors de la mise à jour du cours parent: ${error.message}`);
+		}
+
 		// Invalider les caches associés
-		setCachedData(`module_${courseId}_${moduleId}`, null);
-		setCachedData(`course_${courseId}_true_true`, null);
+		clearCacheItem(`module_${courseId}_${moduleId}`);
+		clearCacheItem(`course_${courseId}`);
+		clearCacheItem(`course_${courseId}_true_true`);
 
 		return newEvaluation;
 	} catch (error) {
-		console.error('Erreur lors de l\'ajout de l\'\u00e9valuation au module:', error);
+		console.error(`Erreur lors de l'ajout de l'évaluation au module: ${error.message}`);
 		return null;
 	}
 };

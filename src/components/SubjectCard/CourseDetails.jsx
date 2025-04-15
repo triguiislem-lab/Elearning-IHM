@@ -26,9 +26,9 @@ import {
 import { fetchCourseByIdFixed as fetchCourseById } from "../../utils/fetchCourseByIdFixed";
 import { getAuth } from "firebase/auth";
 import { database } from "../../../firebaseConfig";
-import { ref, get, set } from "firebase/database";
+import { ref, get, set, update } from "firebase/database";
 import CourseModules from "../CourseModules/CourseModules";
-import ModuleContent from "../CourseModules/ModuleContent";
+import ModuleContentFix from "../CourseModules/ModuleContentFix";
 import CourseProgressBar from "../CourseProgress/CourseProgressBar";
 import ModuleProgressCard from "../CourseProgress/ModuleProgressCard";
 import CourseFeedback from "../Feedback/CourseFeedback";
@@ -795,7 +795,10 @@ const CourseDetails = () => {
 
                 // Mettre à jour l'interface sans recharger la page complète
                 // Cela permet de conserver l'état isEnrolled
-                if (course.modules && course.modules.length > 0) {
+                if (
+                  Array.isArray(course.modules) &&
+                  course.modules.length > 0
+                ) {
                   // Naviguer vers le premier module
                   setActiveModule(course.modules[0]);
                   setShowModuleContent(true);
@@ -1004,18 +1007,48 @@ const CourseDetails = () => {
                           Retour aux modules
                         </button>
                       </div>
-                      <ModuleContent
+                      <ModuleContentFix
                         module={activeModule}
+                        courseId={id}
                         isEnrolled={isEnrolled}
-                        onComplete={() => {
-                          // Mettre à jour le statut du module
+                        onComplete={(type, itemId, score) => {
+                          console.log(
+                            `Item completed: type=${type}, id=${itemId}, score=${
+                              score || "N/A"
+                            }`
+                          );
 
-                          // Recharger le cours pour mettre à jour les modules
-                          fetchCourseById(id).then((updatedCourse) => {
-                            if (updatedCourse) {
-                              setCourse(updatedCourse);
+                          // Save completion status for the user
+                          if (auth.currentUser) {
+                            const progressRef = ref(
+                              database,
+                              `elearning/progress/${auth.currentUser.uid}/${id}/modules/${activeModule.id}/${type}s/${itemId}`
+                            );
+
+                            const completionData = {
+                              completedAt: new Date().toISOString(),
+                              itemId: itemId,
+                              type: type,
+                            };
+
+                            if (type === "evaluation" && score !== undefined) {
+                              completionData.score = score;
                             }
-                          });
+
+                            update(progressRef, completionData)
+                              .then(() => {
+                                // Recharger le cours pour mettre à jour les modules
+                                fetchCourseById(id).then((updatedCourse) => {
+                                  if (updatedCourse) {
+                                    setCourse(updatedCourse);
+                                  }
+                                });
+                              })
+                              .catch((err) =>
+                                console.error("Error saving progress:", err)
+                              );
+                          }
+
                           setShowModuleContent(false);
                           setActiveModule(null);
                         }}
@@ -1404,7 +1437,10 @@ const CourseDetails = () => {
                             className="w-full bg-secondary text-white py-3 px-4 rounded-lg font-medium hover:bg-secondary/90 transition-colors duration-300 flex items-center justify-center gap-2"
                             onClick={() => {
                               // Naviguer vers le premier module du cours
-                              if (course.modules && course.modules.length > 0) {
+                              if (
+                                Array.isArray(course.modules) &&
+                                course.modules.length > 0
+                              ) {
                                 setActiveModule(course.modules[0]);
                                 setShowModuleContent(true);
                                 window.scrollTo({ top: 0, behavior: "smooth" });

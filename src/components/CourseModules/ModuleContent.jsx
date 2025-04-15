@@ -23,6 +23,10 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
   const [moduleData, setModuleData] = useState(module);
   const [loading, setLoading] = useState(false);
 
+  // Define these variables at the top to avoid reference errors
+  let hasResources = false;
+  let hasEvaluations = false;
+
   // Vérifier si le module est valide
   const isModuleValid =
     moduleData && moduleData.id && (moduleData.title || moduleData.titre);
@@ -36,142 +40,122 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
     }
   }, [moduleData]);
 
-  // Vérifier si le module a des ressources et des évaluations
-  const normalizedResources = useMemo(() => {
-    if (!isModuleValid) return [];
-
-    // Handle case where resources is undefined or null
-    if (!moduleData.resources) return [];
-
-    // If resources is already an array, use it
-    if (Array.isArray(moduleData.resources)) return moduleData.resources;
-
-    // If resources is an object, convert it to an array
-    if (typeof moduleData.resources === "object") {
-      return Object.entries(moduleData.resources).map(([id, resource]) => {
-        // Handle case where resource is just a boolean (true)
-        if (typeof resource === "boolean") {
-          return { id, title: `Resource ${id}`, type: "document" };
-        }
-        return {
-          id,
-          ...resource,
-        };
-      });
-    }
-
-    return [];
-  }, [isModuleValid, moduleData]);
-
-  const normalizedEvaluations = useMemo(() => {
-    if (!isModuleValid) return [];
-
-    // Handle case where evaluations is undefined or null
-    if (!moduleData.evaluations) return [];
-
-    // If evaluations is already an array, use it
-    if (Array.isArray(moduleData.evaluations)) {
-      console.log("Evaluations is already an array:", moduleData.evaluations);
-      return moduleData.evaluations;
-    }
-
-    // If evaluations is an object, convert it to an array
-    if (typeof moduleData.evaluations === "object") {
-      console.log(
-        "Converting evaluations object to array:",
-        moduleData.evaluations
-      );
-      const evaluationsArray = Object.entries(moduleData.evaluations).map(
-        ([id, evaluation]) => {
-          // Handle case where evaluation is just a boolean (true)
-          if (typeof evaluation === "boolean") {
-            return { id, title: `Evaluation ${id}`, type: "quiz" };
-          }
-          return {
-            id,
-            ...evaluation,
-          };
-        }
-      );
-      console.log("Normalized evaluations array:", evaluationsArray);
-      return evaluationsArray;
-    }
-
-    return [];
-  }, [isModuleValid, moduleData]);
-
-  const hasResources = normalizedResources.length > 0;
-  const hasEvaluations = normalizedEvaluations.length > 0;
-
   // Effet pour tenter de charger le module si celui-ci est incomplet
   useEffect(() => {
     if ((!module || !module.title) && courseId && module?.id) {
       fetchModuleData(courseId, module.id);
-    } else {
-      // Normalize resources and evaluations before setting module data
-      let normalizedModule = { ...module };
+    } else if (module) {
+      // Create a deep copy to avoid modifying the original
+      const normalizedModule = JSON.parse(JSON.stringify(module || {}));
 
-      // Ensure resources exists
-      if (!normalizedModule.resources) {
-        normalizedModule.resources = [];
-      }
-
-      // Normalize resources if they exist
-      if (
-        normalizedModule.resources &&
-        typeof normalizedModule.resources === "object" &&
-        !Array.isArray(normalizedModule.resources)
-      ) {
-        normalizedModule.resources = Object.entries(
-          normalizedModule.resources
-        ).map(([id, resource]) => {
-          // Handle case where resource is just a boolean (true)
-          if (typeof resource === "boolean") {
-            return { id, title: `Resource ${id}`, type: "document" };
-          }
-          return {
-            id,
-            ...resource,
-          };
-        });
-      }
-
-      // Ensure evaluations exists
-      if (!normalizedModule.evaluations) {
-        normalizedModule.evaluations = [];
-      }
-
-      // Normalize evaluations if they exist
-      if (
-        normalizedModule.evaluations &&
-        typeof normalizedModule.evaluations === "object" &&
-        !Array.isArray(normalizedModule.evaluations)
-      ) {
-        console.log(
-          "Normalizing evaluations in module data:",
-          normalizedModule.evaluations
-        );
-        normalizedModule.evaluations = Object.entries(
-          normalizedModule.evaluations
-        ).map(([id, evaluation]) => {
-          // Handle case where evaluation is just a boolean (true)
-          if (typeof evaluation === "boolean") {
-            return { id, title: `Evaluation ${id}`, type: "quiz" };
-          }
-          return {
-            id,
-            ...evaluation,
-          };
-        });
-        console.log(
-          "Normalized evaluations result:",
-          normalizedModule.evaluations
-        );
-      }
-
+      // Only set moduleData if it's different from current to avoid infinite loops
       setModuleData(normalizedModule);
     }
   }, [module, courseId]);
+
+  // Separate effect to handle normalization after moduleData is set
+  useEffect(() => {
+    if (!moduleData) return;
+
+    // Create a copy to avoid modifying the original
+    const updatedModule = { ...moduleData };
+    let needsUpdate = false;
+
+    // Only update resources if they exist in an object format that needs normalization
+    if (
+      updatedModule.resources &&
+      typeof updatedModule.resources === "object" &&
+      !Array.isArray(updatedModule.resources)
+    ) {
+      try {
+        // Convert resources object to array
+        updatedModule.resources = Object.entries(updatedModule.resources)
+          .filter(
+            ([_, value]) => value !== null && typeof value !== "undefined"
+          )
+          .map(([id, resource]) => {
+            // Handle case where resource is just a boolean (true)
+            if (typeof resource === "boolean") {
+              return { id, title: `Resource ${id}`, type: "document" };
+            }
+            // Handle string values (URLs, etc.)
+            if (typeof resource === "string") {
+              return {
+                id,
+                title: `Resource ${id}`,
+                type: "link",
+                url: resource,
+              };
+            }
+            return {
+              id,
+              ...resource,
+              title: resource.title || `Resource ${id}`,
+            };
+          });
+        needsUpdate = true;
+      } catch (error) {
+        console.error("Error normalizing resources:", error);
+      }
+    }
+
+    // Only update evaluations if they exist in an object format that needs normalization
+    if (
+      updatedModule.evaluations &&
+      typeof updatedModule.evaluations === "object" &&
+      !Array.isArray(updatedModule.evaluations)
+    ) {
+      try {
+        // Convert evaluations object to array
+        updatedModule.evaluations = Object.entries(updatedModule.evaluations)
+          .filter(
+            ([_, value]) => value !== null && typeof value !== "undefined"
+          )
+          .map(([id, evaluation]) => {
+            // Handle case where evaluation is just a boolean (true)
+            if (typeof evaluation === "boolean") {
+              return {
+                id,
+                title: `Evaluation ${id}`,
+                type: "quiz",
+                questions: [],
+                maxScore: 100,
+              };
+            }
+            // Handle quiz data that might be nested
+            if (evaluation && typeof evaluation === "object") {
+              // Make sure questions is an array
+              const questions = evaluation.questions || [];
+              return {
+                id,
+                ...evaluation,
+                title: evaluation.title || `Evaluation ${id}`,
+                type: evaluation.type || "quiz",
+                questions: Array.isArray(questions)
+                  ? questions
+                  : Object.values(questions || {}),
+                maxScore: evaluation.maxScore || 100,
+              };
+            }
+            return {
+              id,
+              title: `Evaluation ${id}`,
+              type: "quiz",
+              questions: [],
+              maxScore: 100,
+            };
+          });
+        needsUpdate = true;
+      } catch (error) {
+        console.error("Error normalizing evaluations:", error);
+      }
+    }
+
+    // Only update if something actually changed
+    if (needsUpdate) {
+      setModuleData(updatedModule);
+    }
+  }, [moduleData?.id]); // Only run this when moduleData.id changes, which indicates a new module
 
   useEffect(() => {
     if (user && isModuleValid) {
@@ -186,6 +170,137 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
       setActiveTab("content");
     }
   }, [hasEvaluations, activeTab]);
+
+  // Nouvelle logique pour normaliser les ressources pour l'affichage
+  const normalizeResourcesForDisplay = (resourcesData) => {
+    if (!resourcesData) return [];
+
+    // Si c'est déjà un tableau, s'assurer que chaque élément est correctement formaté
+    if (Array.isArray(resourcesData)) {
+      return resourcesData.map((resource) => ({
+        id:
+          resource.id ||
+          `res_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        title: resource.title || "Ressource sans titre",
+        type: resource.type || "document",
+        url: resource.url || "",
+        description: resource.description || "",
+        ...resource,
+      }));
+    }
+
+    // Si c'est un objet, convertir en tableau
+    if (typeof resourcesData === "object") {
+      return Object.entries(resourcesData)
+        .filter(([_, res]) => res !== null && typeof res !== "undefined")
+        .map(([id, resource]) => {
+          // Si c'est juste une valeur booléenne ou une chaîne
+          if (typeof resource === "boolean") {
+            return {
+              id,
+              title: `Ressource ${id}`,
+              type: "document",
+              description: "",
+            };
+          }
+
+          if (typeof resource === "string") {
+            return {
+              id,
+              title: `Ressource ${id}`,
+              type: "link",
+              url: resource,
+              description: "",
+            };
+          }
+
+          // Sinon c'est un objet
+          return {
+            id: resource.id || id,
+            title: resource.title || `Ressource ${id}`,
+            type: resource.type || "document",
+            url: resource.url || "",
+            description: resource.description || "",
+            ...resource,
+          };
+        });
+    }
+
+    return [];
+  };
+
+  // Nouvelle logique pour normaliser les évaluations pour l'affichage
+  const normalizeEvaluationsForDisplay = (evaluationsData) => {
+    if (!evaluationsData) return [];
+
+    // Si c'est déjà un tableau, s'assurer que chaque élément est correctement formaté
+    if (Array.isArray(evaluationsData)) {
+      return evaluationsData.map((evaluation) => ({
+        id:
+          evaluation.id ||
+          `eval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        title: evaluation.title || "Évaluation sans titre",
+        type: evaluation.type || "quiz",
+        maxScore: evaluation.maxScore || 100,
+        questions: Array.isArray(evaluation.questions)
+          ? evaluation.questions
+          : evaluation.questions
+          ? Object.values(evaluation.questions)
+          : [],
+        ...evaluation,
+      }));
+    }
+
+    // Si c'est un objet, convertir en tableau
+    if (typeof evaluationsData === "object") {
+      return Object.entries(evaluationsData)
+        .filter(
+          ([_, evalItem]) =>
+            evalItem !== null && typeof evalItem !== "undefined"
+        )
+        .map(([id, evaluation]) => {
+          // Si c'est juste une valeur booléenne
+          if (typeof evaluation === "boolean") {
+            return {
+              id,
+              title: `Évaluation ${id}`,
+              type: "quiz",
+              maxScore: 100,
+              questions: [],
+            };
+          }
+
+          // Sinon c'est un objet
+          return {
+            id: evaluation.id || id,
+            title: evaluation.title || `Évaluation ${id}`,
+            type: evaluation.type || "quiz",
+            maxScore: evaluation.maxScore || 100,
+            questions: Array.isArray(evaluation.questions)
+              ? evaluation.questions
+              : evaluation.questions
+              ? Object.values(evaluation.questions)
+              : [],
+            ...evaluation,
+          };
+        });
+    }
+
+    return [];
+  };
+
+  // Calculer les ressources et évaluations normalisées une seule fois pour l'affichage
+  const moduleSafe = moduleData || {};
+  const normalizedResourcesForDisplay = normalizeResourcesForDisplay(
+    moduleSafe.resources
+  );
+  const normalizedEvaluationsForDisplay = normalizeEvaluationsForDisplay(
+    moduleSafe.evaluations
+  );
+
+  // Utiliser ces variables pour calculer hasResources et hasEvaluations
+  hasResources = normalizedResourcesForDisplay.length > 0;
+  hasEvaluations = normalizedEvaluationsForDisplay.length > 0;
 
   // Nouvelle fonction pour récupérer les données du module directement depuis Firebase
   const fetchModuleData = async (courseId, moduleId) => {
@@ -654,7 +769,7 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
         ) : activeTab === "content" ? (
           hasResources ? (
             <ModuleResources
-              resources={normalizedResources}
+              resources={normalizedResourcesForDisplay}
               onResourceComplete={handleResourceComplete}
               moduleId={moduleData.id}
               courseId={moduleData.courseId}
@@ -673,7 +788,10 @@ const ModuleContent = ({ module, onComplete, isEnrolled, courseId }) => {
           )
         ) : (
           <ModuleEvaluation
-            module={{ ...moduleData, evaluations: normalizedEvaluations }}
+            module={{
+              ...moduleData,
+              evaluations: normalizedEvaluationsForDisplay,
+            }}
             onComplete={handleEvaluationComplete}
             attempts={evaluationAttempts}
             isEnrolled={isEnrolled}
